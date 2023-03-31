@@ -68,11 +68,11 @@ Ind<-str_locate(Log$Input.file,'CCES_')
 Log$Drift<-substr(Log$Input.file,Ind+5,Ind+7)
 Log$Drift<-as.numeric(gsub('\\\\','',Log$Drift))
 
-#Only count presence during 'recording on' times
+#Create UTC variable for start time
+Log$UTC<-with_tz(Log$Start.time,tz="GMT")
 
-#load database
-sqlite <- dbDriver("SQLite")
-dbfiles<-list.files(here('data','2023','CCES2018_Drifts','Beaked whales'),full.names=TRUE)
+#Omit events with missing end time 
+Log<-Log[-is.na(Log$End.time),]
 
 ```
 
@@ -80,62 +80,72 @@ dbfiles<-list.files(here('data','2023','CCES2018_Drifts','Beaked whales'),full.n
 #| echo: false
 #| message: false
 #| warning: false
-#Drift 10
-#extract recording on times from sound acquisition table for each drift
-conn <- dbConnect(sqlite,dbfiles[which(!is.na(str_match(dbfiles,'Drift-10')))])
-DF10 <- dbReadTable(conn, "Sound_Acquisition")    
-GPS10<-dbReadTable(conn,"gpsData")
-dbDisconnect(conn)
 
-DF10<-DF10 %>%
-  mutate(Status=gsub(" ","",Status))
+drifts <- c(10,12,13,14,16,20)
+Species<-c('Mn','Anthro')
 
-StartUTC<-DF10 %>% 
-  filter(Status=="Start") %>%
-  mutate(Start = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Start) 
+#Create dataframe to save detections from all drifts
+TimesAll<-data.frame()
+GPSAll<-data.frame()
 
-StopUTC<-DF10 %>% 
-  filter(Status=="Stop") %>%
-  mutate(Stop = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Stop) 
+#Use PG databases for duty cycle times
+#load database
+sqlite <- dbDriver("SQLite")
+dbfiles<-list.files(here('data','2023','CCES2018_Drifts','Beaked whales'),full.names=TRUE)
 
-CCES_010<-data.frame(Start=StartUTC,Stop=StopUTC) %>%
-  mutate(Drift = 'CCES_010')
-
-#define if humpbacks were present/absent for each bin 
-Mn10<-filter(Log,Species.Code=="Mn")
-Mn10$UTC<-with_tz(Mn10$Start.time,tz="GMT")
-
-CCES_010$Mn<-'Absent'
-
-for(m in 1:nrow(Mn10)){
-  IndMn<-which(CCES_010$Start<=Mn10$Start.time[m] & CCES_010$Stop>=Mn10$End.time[m])
-  if(length(IndMn)>0){CCES_010$Mn[IndMn]<-'Present'}
+for(d in 1:length(drifts)){
+  DriftID<-paste0('Drift-',drifts[d])
+  conn <- dbConnect(sqlite,dbfiles[which(!is.na(str_match(dbfiles,DriftID)))])
+  DF <- dbReadTable(conn, "Sound_Acquisition")    
+  GPS<-dbReadTable(conn,"gpsData")
+  dbDisconnect(conn)
+  
+  GPS<-GPS %>%
+    select(UTC,Latitude,Longitude)%>%
+    mutate(Drift=DriftID,UTC=as.POSIXct(GPS$UTC,'%Y-%m-%d %H:%M',tz='GMT'))
+    
+    GPSAll<-rbind(GPS,GPSAll)
+  
+  DF<-DF %>%
+    mutate(Status=gsub(" ","",Status)) 
+  
+  StartUTC<-DF %>% 
+    filter(Status=="Start") %>%
+    mutate(Start = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
+    select(Start) 
+  
+  StopUTC<-DF %>% 
+    filter(Status=="Stop") %>%
+    mutate(Stop = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
+    select(Stop)  
+  
+  for(s in 1:length(Species)){
+  TimesDF<-data.frame(Start=StartUTC,Stop=StopUTC) %>%
+    mutate(Drift = DriftID)
+  
+  TimesDF$Presence<-'Absent'
+  TimesDF$Species<-Species[s]
+  
+  #Loop through times to see if events span "recording on" periods               
+  for(m in 1:nrow(Log)){
+    IndStart<-max(which(TimesDF$Start<=Log$Start.time[m]))
+    IndStop<-min(TimesDF$Stop>=Log$End.time[m])
+    if(IndStart>0){
+      if(is.na(IndStop)){IndStop=IndStart}
+      TimesDF$Presence[IndStart:IndStop]<-'Present'
+    }
+  }              
+  
+  TimesSP<-TimesDF %>% 
+    filter(Presence=="Present")%>%
+    mutate(Species=as.factor(Species[s])) %>%
+    select(Start,Drift,Species) %>%
+    rename(UTC=Start)
+  
+  TimesAll<-rbind(TimesSP,TimesAll)
+  }
 }
-CCES_010Mn<-CCES_010 %>% 
-  filter(Mn=="Present")%>%
-  mutate(Species='Humpback whale') %>%
-  select(Start,Drift,Species)
 
-#define if ships were present/absent for each bin 
-Ships10<-filter(Log,Species.Code=="Anthro")
-Ships10$UTC<-with_tz(Ships10$Start.time,tz="GMT")
-CCES_010$Ship<-'Absent'
-
-for(s in 1:nrow(Ships10)){
-  IndShip<-which(CCES_010$Start<=Ships10$Start.time[s] & CCES_010$Stop>=Ships10$End.time[s])
-   if(length(IndShip)>0){CCES_010$Ship[IndShip]<-'Present'}
-}
-
-CCES_010Ships<-CCES_010 %>% 
-  filter(Ship=="Present") %>%
-  mutate(Species='Ships') %>%
-  select(Start,Drift,Species)
-
-CCES_010<-rbind(CCES_010Mn,CCES_010Ships)
-CCES_010$UTC<-CCES_010$Start
-CCES_010$Species<-as.factor(CCES_010$Species)
 ```
 
 ```{r}
