@@ -102,9 +102,9 @@ for(d in 1:length(drifts)){
   #Loop through times to see if UO events span "recording on" periods             
    for(m in 1:nrow(Log)){
     IndStart<-max(which(TimesDF$Start<=Log$Start.time[m]))
-    IndStop<-min(which(TimesDF$Stop>=Log$End.time[m]))
+    IndStop<-min(TimesDF$Stop>=Log$End.time[m])
     if(IndStart>0){
-      if(is.na(IndStop) | is.infinite(IndStop)){IndStop=IndStart}
+      if(is.na(IndStop)){IndStop=IndStart}
       TimesDF$UO[IndStart:IndStop]<-'Present'
     }
   }              
@@ -149,7 +149,6 @@ PlotPresDrifts<-function(figtitle){
 }
 
 lapply(figtitle,PlotPresDrifts)
-
 
 ```
 
