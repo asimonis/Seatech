@@ -105,6 +105,7 @@ for(d in 1:length(drifts)){
     IndStop<-min(which(TimesDF$Stop>=Log$End.time[m]))
     if(IndStart>0){
       if(is.na(IndStop) | is.infinite(IndStop)){IndStop=IndStart}
+      if(is.na(IndStop) | IndStop==0){IndStop=IndStart}
       TimesDF$UO[IndStart:IndStop]<-'Present'
     }
   }            

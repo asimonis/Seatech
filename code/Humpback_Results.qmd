@@ -25,9 +25,9 @@ The presence of humpback whales and ships were logged by 3 Seatech analysts, inc
 # # # if (!require("pacman")) install.packages("pacman")
 # if(!require('devtools')) install.packages('devtools')
 # # install from GitHub
-# devtools::install_github('TaikiSan21/PAMmisc')
+devtools::install_github('TaikiSan21/PAMmisc')
 # devtools::install_github('ericpante/marmap')
-suppressMessages(pacman::p_load(knitr,here,lubridate,dplyr,magrittr,xlsx,RSQLite,viridis,marmap,ggplot2,suncalc,ggnewscale,PAMmisc,stringr))
+suppressMessages(pacman::p_load(knitr,here,lubridate,dplyr,magrittr,xlsx,RSQLite,viridis,marmap,ggplot2,suncalc,ggnewscale,PAMmisc,stringr,gridExtra))
 
 #Sarah's logs
 LogSB<-list.files(here('data','2023','Humpback whales','SB'), pattern='.xls',full.names = TRUE) %>%
@@ -119,343 +119,31 @@ for(d in 1:length(drifts)){
     mutate(Stop = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
     select(Stop)  
   
-  for(s in 1:length(Species)){
   TimesDF<-data.frame(Start=StartUTC,Stop=StopUTC) %>%
     mutate(Drift = DriftID)
   
   TimesDF$Presence<-'Absent'
-  TimesDF$Species<-Species[s]
+  TimesDF$Species<-'NA'
   
   #Loop through times to see if events span "recording on" periods               
   for(m in 1:nrow(Log)){
     IndStart<-max(which(TimesDF$Start<=Log$Start.time[m]))
     IndStop<-min(TimesDF$Stop>=Log$End.time[m])
     if(IndStart>0){
-      if(is.na(IndStop)){IndStop=IndStart}
+      if(is.na(IndStop) | IndStop==0){IndStop=IndStart}
       TimesDF$Presence[IndStart:IndStop]<-'Present'
+      TimesDF$Species[IndStart:IndStop]<-rep(Log$Species.Code[m],length(IndStart:IndStop))
     }
   }              
   
-  TimesSP<-TimesDF %>% 
+  TimesDF<-TimesDF %>% 
     filter(Presence=="Present")%>%
-    mutate(Species=as.factor(Species[s])) %>%
     select(Start,Drift,Species) %>%
     rename(UTC=Start)
-  
-  TimesAll<-rbind(TimesSP,TimesAll)
-  }
+
+  TimesAll<-rbind(TimesDF,TimesAll)
 }
 
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#Drift 12
-#extract recording on times from sound acquisition table for each drift
-conn <- dbConnect(sqlite,dbfiles[which(!is.na(str_match(dbfiles,'Drift-12')))])
-DF12 <- dbReadTable(conn, "Sound_Acquisition")    
-GPS12<-dbReadTable(conn,"gpsData")
-dbDisconnect(conn)
-
-DF12<-DF12 %>%
-  mutate(Status=gsub(" ","",Status))
-
-StartUTC<-DF12 %>% 
-  filter(Status=="Start") %>%
-  mutate(Start = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Start) 
-
-StopUTC<-DF12 %>% 
-  filter(Status=="Stop") %>%
-  mutate(Stop = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Stop) 
-
-CCES_012<-data.frame(Start=StartUTC,Stop=StopUTC) %>%
-  mutate(Drift = 'CCES_012')
-
-#define if humpbacks were present/absent for each bin 
-Mn12<-filter(Log,Species.Code=="Mn")
-Mn12$UTC<-with_tz(Mn12$Start.time,tz="GMT")
-
-CCES_012$Mn<-'Absent'
-
-for(m in 1:nrow(Mn12)){
-  IndMn<-which(CCES_012$Start<=Mn12$Start.time[m] & CCES_012$Stop>=Mn12$End.time[m])
-  if(length(IndMn)>0){CCES_012$Mn[IndMn]<-'Present'}
-}
-CCES_012Mn<-CCES_012 %>% 
-  filter(Mn=="Present")%>%
-  mutate(Species='Humpback whale') %>%
-  select(Start,Drift,Species)
-
-#define if ships were present/absent for each bin 
-Ships12<-filter(Log,Species.Code=="Anthro")
-Ships12$UTC<-with_tz(Ships12$Start.time,tz="GMT")
-CCES_012$Ship<-'Absent'
-
-for(s in 1:nrow(Ships12)){
-  IndShip<-which(CCES_012$Start<=Ships12$Start.time[s] & CCES_012$Stop>=Ships12$End.time[s])
-   if(length(IndShip)>0){CCES_012$Ship[IndShip]<-'Present'}
-}
-
-CCES_012Ships<-CCES_012 %>% 
-  filter(Ship=="Present") %>%
-  mutate(Species='Ships') %>%
-  select(Start,Drift,Species)
-
-CCES_012<-rbind(CCES_012Mn,CCES_012Ships)
-CCES_012$UTC<-CCES_012$Start
-CCES_012$Species<-as.factor(CCES_012$Species)
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#Drift 13
-#extract recording on times from sound acquisition table for each drift
-conn <- dbConnect(sqlite,dbfiles[which(!is.na(str_match(dbfiles,'Drift-13')))])
-DF13 <- dbReadTable(conn, "Sound_Acquisition")    
-GPS13<-dbReadTable(conn,"gpsData")
-dbDisconnect(conn)
-
-DF13<-DF13 %>%
-  mutate(Status=gsub(" ","",Status))
-
-StartUTC<-DF13 %>% 
-  filter(Status=="Start") %>%
-  mutate(Start = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Start) 
-
-StopUTC<-DF13 %>% 
-  filter(Status=="Stop") %>%
-  mutate(Stop = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Stop) 
-
-CCES_013<-data.frame(Start=StartUTC,Stop=StopUTC) %>%
-  mutate(Drift = 'CCES_013')
-
-#define if humpbacks were present/absent for each bin 
-Mn13<-filter(Log,Species.Code=="Mn")
-Mn13$UTC<-with_tz(Mn13$Start.time,tz="GMT")
-
-CCES_013$Mn<-'Absent'
-
-for(m in 1:nrow(Mn13)){
-  IndMn<-which(CCES_013$Start<=Mn13$Start.time[m] & CCES_013$Stop>=Mn13$End.time[m])
-  if(length(IndMn)>0){CCES_013$Mn[IndMn]<-'Present'}
-}
-CCES_013Mn<-CCES_013 %>% 
-  filter(Mn=="Present")%>%
-  mutate(Species='Humpback whale') %>%
-  select(Start,Drift,Species)
-
-#define if ships were present/absent for each bin 
-Ships13<-filter(Log,Species.Code=="Anthro")
-Ships13$UTC<-with_tz(Ships13$Start.time,tz="GMT")
-CCES_013$Ship<-'Absent'
-
-for(s in 1:nrow(Ships13)){
-  IndShip<-which(CCES_013$Start<=Ships13$Start.time[s] & CCES_013$Stop>=Ships13$End.time[s])
-   if(length(IndShip)>0){CCES_013$Ship[IndShip]<-'Present'}
-}
-
-CCES_013Ships<-CCES_013 %>% 
-  filter(Ship=="Present") %>%
-  mutate(Species='Ships') %>%
-  select(Start,Drift,Species)
-
-CCES_013<-rbind(CCES_013Mn,CCES_013Ships)
-CCES_013$UTC<-CCES_013$Start
-CCES_013$Species<-as.factor(CCES_013$Species)
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#Drift 14
-#extract recording on times from sound acquisition table for each drift
-conn <- dbConnect(sqlite,dbfiles[which(!is.na(str_match(dbfiles,'Drift-15')))])
-DF14 <- dbReadTable(conn, "Sound_Acquisition")    
-GPS14<-dbReadTable(conn,"gpsData")
-dbDisconnect(conn)
-
-DF14<-DF14 %>%
-  mutate(Status=gsub(" ","",Status))
-
-StartUTC<-DF14 %>% 
-  filter(Status=="Start") %>%
-  mutate(Start = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Start) 
-
-StopUTC<-DF14 %>% 
-  filter(Status=="Stop") %>%
-  mutate(Stop = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Stop) 
-
-CCES_014<-data.frame(Start=StartUTC,Stop=StopUTC) %>%
-  mutate(Drift = 'CCES_014')
-
-#define if humpbacks were present/absent for each bin 
-Mn14<-filter(Log,Species.Code=="Mn")
-Mn14$UTC<-with_tz(Mn14$Start.time,tz="GMT")
-
-CCES_014$Mn<-'Absent'
-
-for(m in 1:nrow(Mn14)){
-  IndMn<-which(CCES_014$Start<=Mn14$Start.time[m] & CCES_014$Stop>=Mn14$End.time[m])
-  if(length(IndMn)>0){CCES_014$Mn[IndMn]<-'Present'}
-}
-CCES_014Mn<-CCES_014 %>% 
-  filter(Mn=="Present")%>%
-  mutate(Species='Humpback whale') %>%
-  select(Start,Drift,Species)
-
-#define if ships were present/absent for each bin 
-Ships14<-filter(Log,Species.Code=="Anthro")
-Ships14$UTC<-with_tz(Ships14$Start.time,tz="GMT")
-CCES_014$Ship<-'Absent'
-
-for(s in 1:nrow(Ships14)){
-  IndShip<-which(CCES_014$Start<=Ships14$Start.time[s] & CCES_014$Stop>=Ships14$End.time[s])
-   if(length(IndShip)>0){CCES_014$Ship[IndShip]<-'Present'}
-}
-
-CCES_014Ships<-CCES_014 %>% 
-  filter(Ship=="Present") %>%
-  mutate(Species='Ships') %>%
-  select(Start,Drift,Species)
-
-CCES_014<-rbind(CCES_014Mn,CCES_014Ships)
-CCES_014$UTC<-CCES_014$Start
-CCES_014$Species<-as.factor(CCES_014$Species)
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#Drift 16
-#extract recording on times from sound acquisition table for each drift
-conn <- dbConnect(sqlite,dbfiles[which(!is.na(str_match(dbfiles,'Drift-16')))])
-DF16 <- dbReadTable(conn, "Sound_Acquisition")    
-GPS16<-dbReadTable(conn,"gpsData")
-dbDisconnect(conn)
-
-DF16<-DF16 %>%
-  mutate(Status=gsub(" ","",Status))
-
-StartUTC<-DF16 %>% 
-  filter(Status=="Start") %>%
-  mutate(Start = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Start) 
-
-StopUTC<-DF16 %>% 
-  filter(Status=="Stop") %>%
-  mutate(Stop = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Stop) 
-
-CCES_016<-data.frame(Start=StartUTC,Stop=StopUTC) %>%
-  mutate(Drift = 'CCES_016')
-
-#define if humpbacks were present/absent for each bin 
-Mn16<-filter(Log,Species.Code=="Mn")
-Mn16$UTC<-with_tz(Mn16$Start.time,tz="GMT")
-
-CCES_016$Mn<-'Absent'
-
-for(m in 1:nrow(Mn16)){
-  IndMn<-which(CCES_016$Start<=Mn16$Start.time[m] & CCES_016$Stop>=Mn16$End.time[m])
-  if(length(IndMn)>0){CCES_016$Mn[IndMn]<-'Present'}
-}
-CCES_016Mn<-CCES_016 %>% 
-  filter(Mn=="Present")%>%
-  mutate(Species='Humpback whale') %>%
-  select(Start,Drift,Species)
-
-#define if ships were present/absent for each bin 
-Ships16<-filter(Log,Species.Code=="Anthro")
-Ships16$UTC<-with_tz(Ships16$Start.time,tz="GMT")
-CCES_016$Ship<-'Absent'
-
-for(s in 1:nrow(Ships16)){
-  IndShip<-which(CCES_016$Start<=Ships16$Start.time[s] & CCES_016$Stop>=Ships16$End.time[s])
-   if(length(IndShip)>0){CCES_016$Ship[IndShip]<-'Present'}
-}
-
-CCES_016Ships<-CCES_016 %>% 
-  filter(Ship=="Present") %>%
-  mutate(Species='Ships') %>%
-  select(Start,Drift,Species)
-
-CCES_016<-rbind(CCES_016Mn,CCES_016Ships)
-CCES_016$UTC<-CCES_016$Start
-CCES_016$Species<-as.factor(CCES_016$Species)
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#Drift 20
-#extract recording on times from sound acquisition table for each drift
-conn <- dbConnect(sqlite,dbfiles[which(!is.na(str_match(dbfiles,'Drift-20')))])
-DF20 <- dbReadTable(conn, "Sound_Acquisition")    
-GPS20<-dbReadTable(conn,"gpsData")
-dbDisconnect(conn)
-
-DF20<-DF20 %>%
-  mutate(Status=gsub(" ","",Status))
-
-StartUTC<-DF20 %>% 
-  filter(Status=="Start") %>%
-  mutate(Start = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Start) 
-
-StopUTC<-DF20 %>% 
-  filter(Status=="Stop") %>%
-  mutate(Stop = as.POSIXct(UTC,'%Y-%m-%d %H:%M:%OS',tz='GMT')) %>%
-  select(Stop) 
-
-CCES_020<-data.frame(Start=StartUTC,Stop=StopUTC) %>%
-  mutate(Drift = 'CCES_020')
-
-#define if humpbacks were present/absent for each bin 
-Mn20<-filter(Log,Species.Code=="Mn")
-Mn20$UTC<-with_tz(Mn20$Start.time,tz="GMT")
-
-CCES_020$Mn<-'Absent'
-
-for(m in 1:nrow(Mn20)){
-  IndMn<-which(CCES_020$Start<=Mn20$Start.time[m] & CCES_020$Stop>=Mn20$End.time[m])
-  if(length(IndMn)>0){CCES_020$Mn[IndMn]<-'Present'}
-}
-CCES_020Mn<-CCES_020 %>% 
-  filter(Mn=="Present")%>%
-  mutate(Species='Humpback whale') %>%
-  select(Start,Drift,Species)
-
-#define if ships were present/absent for each bin 
-Ships20<-filter(Log,Species.Code=="Anthro")
-Ships20$UTC<-with_tz(Ships20$Start.time,tz="GMT")
-CCES_020$Ship<-'Absent'
-
-for(s in 1:nrow(Ships20)){
-  IndShip<-which(CCES_020$Start<=Ships20$Start.time[s] & CCES_020$Stop>=Ships20$End.time[s])
-   if(length(IndShip)>0){CCES_020$Ship[IndShip]<-'Present'}
-}
-
-CCES_020Ships<-CCES_020 %>% 
-  filter(Ship=="Present") %>%
-  mutate(Species='Ships') %>%
-  select(Start,Drift,Species)
-
-CCES_020<-rbind(CCES_020Mn,CCES_020Ships)
-CCES_020$UTC<-CCES_020$Start
-CCES_020$Species<-as.factor(CCES_020$Species)
 ```
 
 ## Plots
@@ -464,15 +152,10 @@ CCES_020$Species<-as.factor(CCES_020$Species)
 
 ```{r}
 #Define Figure Options
+figtitle<-c('Drift-10','Drift-12','Drift-13','Drift-14','Drift-16','Drift-20')
 
-figtitle10<-'Drift 10'
-figtitle12<-'Drift 12'
-figtitle13<-'Drift 13'
-figtitle14<-'Drift 14'
-figtitle16<-'Drift 16'
-figtitle20<-'Drift 20'
 MnColor = 'magenta'
-ShipColor = 'orange'
+ShipColor = 'blue'
 ```
 
 ```{r}
@@ -480,37 +163,29 @@ ShipColor = 'orange'
 #| message: false
 #| warning: false
 
-GPS10$UTC<-as.POSIXct(GPS10$UTC,'%Y-%m-%d %H:%M',tz='GMT')
-GPS12$UTC<-as.POSIXct(GPS12$UTC,'%Y-%m-%d %H:%M',tz='GMT')
-GPS13$UTC<-as.POSIXct(GPS13$UTC,'%Y-%m-%d %H:%M',tz='GMT')
-GPS14$UTC<-as.POSIXct(GPS14$UTC,'%Y-%m-%d %H:%M',tz='GMT')
-GPS16$UTC<-as.POSIXct(GPS16$UTC,'%Y-%m-%d %H:%M',tz='GMT')
-GPS20$UTC<-as.POSIXct(GPS20$UTC,'%Y-%m-%d %H:%M',tz='GMT')
 
-plotPresGrid(Mn10,start=min(GPS10$UTC),end=max(GPS10$UTC),type="presence",timeBin="minute",gps=GPS10,title=paste0(figtitle10,': Humpback whales'),fill=MnColor)
+PlotPresDrifts<-function(figtitle){
+  MnDF<-(TimesAll) %>%
+  filter(Drift==figtitle,Species=="Mn")
 
-plotPresGrid(Ships10,start=min(GPS10$UTC),end=max(GPS10$UTC),timeBin="minute",type="presence",gps=GPS10,title=paste0(figtitle10,': Ships'),fill=ShipColor)
+  AnthroDF<-(TimesAll) %>%
+  filter(Drift==figtitle, Species=="Anthro")
+  
+  GPSDF<-(GPSAll) %>%
+  filter(Drift==figtitle)
 
+  DielMn = plotPresGrid(MnDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",
+               bin="minute",gps=GPSDF,title=paste0(figtitle,': Humpback whales'),fill=MnColor)
 
-plotPresGrid(Mn12,start=min(GPS12$UTC),end=max(GPS12$UTC),type="presence",timeBin="minute",gps=GPS12,title=paste0(figtitle12,': Humpback whales'),fill=MnColor)
+  DielShip = plotPresGrid(AnthroDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",
+               bin="minute",gps=GPSDF,title=paste0(figtitle,': Ships'),fill=ShipColor)
+  
+  grid.arrange(DielMn,DielShip,nrow=2)
+  
+}
 
-plotPresGrid(Ships12,start=min(GPS12$UTC),end=max(GPS12$UTC),timeBin="minute",type="presence",gps=GPS12,title=paste0(figtitle12,': Ships'),fill=ShipColor)
+lapply(figtitle,PlotPresDrifts)
 
-plotPresGrid(Mn13,start=min(GPS13$UTC),end=max(GPS13$UTC),type="presence",timeBin="minute",gps=GPS13,title=paste0(figtitle13,': Humpback whales'),fill=MnColor)
-
-plotPresGrid(Ships13,start=min(GPS13$UTC),end=max(GPS13$UTC),timeBin="minute",type="presence",gps=GPS13,title=paste0(figtitle13,': Ships'),fill=ShipColor)
-
-plotPresGrid(Mn14,start=min(GPS14$UTC),end=max(GPS14$UTC),type="presence",timeBin="minute",gps=GPS14,title=paste0(figtitle14,': Humpback whales'),fill=MnColor)
-
-plotPresGrid(Ships14,start=min(GPS14$UTC),end=max(GPS14$UTC),timeBin="minute",type="presence",gps=GPS14,title=paste0(figtitle14,': Ships'),fill=ShipColor)
-
-plotPresGrid(Mn16,start=min(GPS16$UTC),end=max(GPS16$UTC),type="presence",timeBin="minute",gps=GPS16,title=paste0(figtitle16,': Humpback whales'),fill=MnColor)
-
-plotPresGrid(Ships16,start=min(GPS16$UTC),end=max(GPS16$UTC),timeBin="minute",type="presence",gps=GPS16,title=paste0(figtitle16,': Ships'),fill=ShipColor)
-
-plotPresGrid(Mn20,start=min(GPS20$UTC),end=max(GPS20$UTC),type="presence",timeBin="minute",gps=GPS20,title=paste0(figtitle20,': Humpback whales'),fill=MnColor)
-
-plotPresGrid(Ships20,start=min(GPS20$UTC),end=max(GPS20$UTC),timeBin="minute",type="presence",gps=GPS20,title=paste0(figtitle20,': Ships'),fill=ShipColor)
 ```
 
 ### **Weekly Plot**
@@ -519,29 +194,20 @@ plotPresGrid(Ships20,start=min(GPS20$UTC),end=max(GPS20$UTC),timeBin="minute",ty
 #| echo: false
 #| message: false
 #| warning: false
-plotPresBar(CCES_010,start=min(GPS10$UTC),end=max(GPS10$UTC),timeBin="day",
-            by='Species',title=paste0(figtitle10,': Daily presence'))+
-  scale_fill_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")
 
-plotPresBar(CCES_012,start=min(GPS12$UTC),end=max(GPS12$UTC),timeBin="day",
-            by='Species',title=paste0(figtitle12,': Daily presence'))+
-  scale_fill_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")
+PlotPresBars<-function(figtitle){
+  SpDF<-(TimesAll) %>%
+  filter(Drift==figtitle)
+  
+  GPSDF<-(GPSAll) %>%
+  filter(Drift==figtitle)
+  
+  plotPresBar(SpDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),bin="day",by="Species",title=paste0(figtitle,': Humpback whales and ships'),fill=Species)+
+    scale_fill_manual(values=c(MnColor, ShipColor))
+}
 
-plotPresBar(CCES_013,start=min(GPS13$UTC),end=max(GPS13$UTC),timeBin="day",
-            by='Species',title=paste0(figtitle13,': Daily presence'))+
-  scale_fill_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")
+lapply(figtitle,PlotPresBars)
 
-plotPresBar(CCES_014,start=min(GPS14$UTC),end=max(GPS14$UTC),timeBin="day",
-            by='Species',title=paste0(figtitle14,': Daily presence'))+
-  scale_fill_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")
-
-plotPresBar(CCES_016,start=min(GPS16$UTC),end=max(GPS16$UTC),timeBin="day",
-            by='Species',title=paste0(figtitle16,': Daily presence'))+
-  scale_fill_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")
-
-plotPresBar(CCES_020,start=min(GPS20$UTC),end=max(GPS20$UTC),timeBin="day",
-            by='Species',title=paste0(figtitle20,': Daily presence'))+
-  scale_fill_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")
 ```
 
 ### Map
@@ -550,241 +216,101 @@ plotPresBar(CCES_020,start=min(GPS20$UTC),end=max(GPS20$UTC),timeBin="day",
 #| echo: false
 #| message: false
 #| warning: false
-
-#Define position of each event
-for(c in 1:nrow(CCES_010)){
-  Ind<-which.min(abs(as.numeric(difftime(GPS10$UTC,CCES_010$UTC[c],units="mins"))))
-  CCES_010$Longitude[c]<-GPS10$Longitude[Ind]
-  CCES_010$Latitude[c]<-GPS10$Latitude[Ind]
+#Function PlotPresMaps will map events on each drift 
+PlotPresMaps<-function(figtitle){
+  MnDF<-(TimesAll) %>%
+    filter(Drift==figtitle, Species=="Mn")
+  
+  AnthroDF<-(TimesAll) %>%
+    filter(Drift==figtitle, Species=="Anthro")
+  
+  GPSDF<-(GPSAll) %>%
+    filter(Drift==figtitle)
+  
+  #Define position of each event
+  for(c in 1:nrow(MnDF)){
+    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,MnDF$UTC[c],units="mins"))))
+    MnDF$Longitude[c]<-GPSDF$Longitude[Ind]
+    MnDF$Latitude[c]<-GPSDF$Latitude[Ind]
   }
-
-#define boundaries of the map
-lon1<-min(GPS10$Longitude)-2
-lon2<-max(GPS10$Longitude)+2
-lat1<-max(GPS10$Latitude)+2
-lat2<-min(GPS10$Latitude)-2
-
-#Extract bathymetry data from NOAA (saves local file to speed future performance)
-bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
-
-#Create color palettes
-blues<-c("royalblue4","royalblue3",
-         "royalblue2","royalblue1")
-greys<-c(grey(0.8),grey(0.93),grey(0.99))
-dasbr.ptColor = "black"  # color for DASBR track and deployment points
-
-autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
-  coord_cartesian(expand = 0)+
-  geom_contour(aes(z=z),breaks=c(-100,-500,-1000),color="gray24")+
-  scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
-    colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPS10,aes(Longitude,Latitude),size=0.1)+
-  new_scale_color()+
-  geom_point(data=CCES_010,aes(x=Longitude,y=Latitude,color=Species))+scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle10)
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-
-#Define position of each event
-for(c in 1:nrow(CCES_012)){
-  Ind<-which.min(abs(as.numeric(difftime(GPS12$UTC,CCES_012$UTC[c],units="mins"))))
-  CCES_012$Longitude[c]<-GPS12$Longitude[Ind]
-  CCES_012$Latitude[c]<-GPS12$Latitude[Ind]
+    for(c in 1:nrow(AnthroDF)){
+    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,AnthroDF$UTC[c],units="mins"))))
+    AnthroDF$Longitude[c]<-GPSDF$Longitude[Ind]
+    AnthroDF$Latitude[c]<-GPSDF$Latitude[Ind]
   }
+  
+  SpDF<-rbind(MnDF,AnthroDF)
 
-#define boundaries of the map
-lon1<-min(GPS12$Longitude)-2
-lon2<-max(GPS12$Longitude)+2
-lat1<-max(GPS12$Latitude)+2
-lat2<-min(GPS12$Latitude)-2
+  #define boundaries of the map
+  lon1<-min(GPSDF$Longitude)-2
+  lon2<-max(GPSDF$Longitude)+2
+  lat1<-max(GPSDF$Latitude)+2
+  lat2<-min(GPSDF$Latitude)-2
 
-#Extract bathymetry data from NOAA (saves local file to speed future performance)
-bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
+  #Extract bathymetry data from NOAA (saves local file to speed future performance)
+  bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
 
-#Create color palettes
-blues<-c("royalblue4","royalblue3",
-         "royalblue2","royalblue1")
-greys<-c(grey(0.8),grey(0.93),grey(0.99))
-dasbr.ptColor = "black"  # color for DASBR track and deployment points
+  autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
+    coord_cartesian(expand = 0)+
+    geom_contour(aes(z=z),breaks=c(-100,-500,-1000),color="gray24")+
+    scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
+                         colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
+    geom_point(data=GPSDF,aes(Longitude,Latitude),size=0.1)+
+    new_scale_color()+
+    geom_point(data=SpDF,aes(x=Longitude,y=Latitude,color=Species))+
+scale_color_manual(values=c(MnColor, ShipColor), labels=c("Humpback whales", "Ships"),name="")+
+    xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle)
 
-autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
-  coord_cartesian(expand = 0)+
-  geom_contour(aes(z=z),breaks=c(-120,-500,-1200),color="gray24")+
-  scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
-    colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPS12,aes(Longitude,Latitude),size=0.1)+
-  new_scale_color()+
-  geom_point(data=CCES_012,aes(x=Longitude,y=Latitude,color=Species))+scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle12)
-
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-
-#Define position of each event
-for(c in 1:nrow(CCES_013)){
-  Ind<-which.min(abs(as.numeric(difftime(GPS13$UTC,CCES_013$UTC[c],units="mins"))))
-  CCES_013$Longitude[c]<-GPS13$Longitude[Ind]
-  CCES_013$Latitude[c]<-GPS13$Latitude[Ind]
-  }
-
-#define boundaries of the map
-lon1<-min(GPS13$Longitude)-2
-lon2<-max(GPS13$Longitude)+2
-lat1<-max(GPS13$Latitude)+2
-lat2<-min(GPS13$Latitude)-2
-
-#Extract bathymetry data from NOAA (saves local file to speed future performance)
-bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
-
-#Create color palettes
-blues<-c("royalblue4","royalblue3",
-         "royalblue2","royalblue1")
-greys<-c(grey(0.8),grey(0.93),grey(0.99))
-dasbr.ptColor = "black"  # color for DASBR track and deployment points
-
-autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
-  coord_cartesian(expand = 0)+
-  geom_contour(aes(z=z),breaks=c(-120,-500,-1200),color="gray24")+
-  scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
-    colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPS13,aes(Longitude,Latitude),size=0.1)+
-  new_scale_color()+
-  geom_point(data=CCES_013,aes(x=Longitude,y=Latitude,color=Species))+scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle13)
-
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-#NO DETECTIONS ON 14 
-
-
-# #Define position of each event
-# for(c in 1:nrow(CCES_014)){
-#   Ind<-which.min(abs(as.numeric(difftime(GPS14$UTC,CCES_014$UTC[c],units="mins"))))
-#   CCES_014$Longitude[c]<-GPS14$Longitude[Ind]
-#   CCES_014$Latitude[c]<-GPS14$Latitude[Ind]
-#   }
-# 
-# #define boundaries of the map
-# lon1<-min(GPS14$Longitude)-2
-# lon2<-max(GPS14$Longitude)+2
-# lat1<-max(GPS14$Latitude)+2
-# lat2<-min(GPS14$Latitude)-2
-# 
-# #Extract bathymetry data from NOAA (saves local file to speed future performance)
-# bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
-# 
-# #Create color palettes
-# blues<-c("royalblue4","royalblue3",
-#          "royalblue2","royalblue1")
-# greys<-c(grey(0.8),grey(0.93),grey(0.99))
-# dasbr.ptColor = "black"  # color for DASBR track and deployment points
-# 
-# autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
-#   coord_cartesian(expand = 0)+
-#   geom_contour(aes(z=z),breaks=c(-120,-500,-1200),color="gray24")+
-#   scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
-#     colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-#   geom_point(data=GPS14,aes(Longitude,Latitude),size=0.1)+
-#   new_scale_color()+
-#   geom_point(data=CCES_014,aes(x=Longitude,y=Latitude,color=Species))+scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
-#   xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle14)
-
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-
-#Define position of each event
-for(c in 1:nrow(CCES_016)){
-  Ind<-which.min(abs(as.numeric(difftime(GPS16$UTC,CCES_016$UTC[c],units="mins"))))
-  CCES_016$Longitude[c]<-GPS16$Longitude[Ind]
-  CCES_016$Latitude[c]<-GPS16$Latitude[Ind]
-  }
-
-#define boundaries of the map
-lon1<-min(GPS16$Longitude)-2
-lon2<-max(GPS16$Longitude)+2
-lat1<-max(GPS16$Latitude)+2
-lat2<-min(GPS16$Latitude)-2
-
-#Extract bathymetry data from NOAA (saves local file to speed future performance)
-bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
-
-#Create color palettes
-blues<-c("royalblue4","royalblue3",
-         "royalblue2","royalblue1")
-greys<-c(grey(0.8),grey(0.93),grey(0.99))
-dasbr.ptColor = "black"  # color for DASBR track and deployment points
-
-autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
-  coord_cartesian(expand = 0)+
-  geom_contour(aes(z=z),breaks=c(-120,-500,-1200),color="gray24")+
-  scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
-    colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPS16,aes(Longitude,Latitude),size=0.1)+
-  new_scale_color()+
-  geom_point(data=CCES_016,aes(x=Longitude,y=Latitude,color=Species))+scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle16)
-
-```
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-
-#Define position of each event
-for(c in 1:nrow(CCES_020)){
-  Ind<-which.min(abs(as.numeric(difftime(GPS20$UTC,CCES_020$UTC[c],units="mins"))))
-  CCES_020$Longitude[c]<-GPS20$Longitude[Ind]
-  CCES_020$Latitude[c]<-GPS20$Latitude[Ind]
 }
 
-#define boundaries of the map
-lon1<-min(GPS20$Longitude)-2
-lon2<-max(GPS20$Longitude)+2
-lat1<-max(GPS20$Latitude)+2
-lat2<-min(GPS20$Latitude)-2
-
-#Extract bathymetry data from NOAA (saves local file to speed future performance)
-bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
-
-#Create color palettes
-blues<-c("royalblue4","royalblue3",
-         "royalblue2","royalblue1")
-greys<-c(grey(0.8),grey(0.93),grey(0.99))
-dasbr.ptColor = "black"  # color for DASBR track and deployment points
-
-autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
-  coord_cartesian(expand = 0)+
-  geom_contour(aes(z=z),breaks=c(-120,-500,-1200),color="gray24")+
-  scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
-                       colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPS20,aes(Longitude,Latitude),size=0.1)+
-  new_scale_color()+
-  geom_point(data=CCES_020,aes(x=Longitude,y=Latitude,color=Species))+scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle20)
+lapply(figtitle,PlotPresMaps)
 
 ```
+
+#### Map of all drifts
 
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-width: 4
+#| fig-height: 6
+#| fig-cap: Map of all drifts analyzed
+
+
+#Create dataframe with positions of all events
+SpDF_gps<-data.frame()
+
+for(d in 1:length(figtitle)){
+    MnDF<-(TimesAll) %>%
+    filter(Drift==figtitle[d],Species=="Mn")
+  
+   AnthroDF<-(TimesAll) %>%
+    filter(Drift==figtitle[d],Species=="Anthro")
+  
+  GPSDF<-(GPSAll) %>%
+    filter(Drift==figtitle[d])
+
+  #Define position of each event
+  for(c in 1:nrow(MnDF)){
+    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,MnDF$UTC[c],units="mins"))))
+    MnDF$Longitude[c]<-GPSDF$Longitude[Ind]
+    MnDF$Latitude[c]<-GPSDF$Latitude[Ind]
+  }
+  
+   for(c in 1:nrow(AnthroDF)){
+    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,AnthroDF$UTC[c],units="mins"))))
+    AnthroDF$Longitude[c]<-GPSDF$Longitude[Ind]
+    AnthroDF$Latitude[c]<-GPSDF$Latitude[Ind]
+  }
+  
+  DF<-rbind(MnDF,AnthroDF)
+  
+SpDF_gps<-rbind(DF,SpDF_gps)
+DF<-data.frame()
+MnDF<-data.frame()
+AnthroDF<-data.frame()
+}
 
 #define boundaries of the map
 lon1=-132;lon2=-114;lat1=27;lat2=50
@@ -792,29 +318,15 @@ lon1=-132;lon2=-114;lat1=27;lat2=50
 #Extract bathymetry data from NOAA (saves local file to speed future performance)
 bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
 
-#Create color palettes
-blues<-c("royalblue4","royalblue3",
-         "royalblue2","royalblue1")
-greys<-c(grey(0.8),grey(0.93),grey(0.99))
-dasbr.ptColor = "black"  # color for DASBR track and deployment points
-
 autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   coord_cartesian(expand = 0)+
   geom_contour(aes(z=z),breaks=c(-1000),color="gray24")+
   scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
                        colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPS10,aes(Longitude,Latitude),size=0.1)+
-  geom_point(data=GPS12,aes(Longitude,Latitude),size=0.1)+
-  geom_point(data=GPS13,aes(Longitude,Latitude),size=0.1)+
-  geom_point(data=GPS14,aes(Longitude,Latitude),size=0.1)+
-  geom_point(data=GPS16,aes(Longitude,Latitude),size=0.1)+
-  geom_point(data=GPS20,aes(Longitude,Latitude),size=0.1)+
+  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.1)+
   new_scale_color()+
-  geom_point(data=CCES_010,aes(x=Longitude,y=Latitude,color=Species))+
-  geom_point(data=CCES_012,aes(x=Longitude,y=Latitude,color=Species))+
-  geom_point(data=CCES_013,aes(x=Longitude,y=Latitude,color=Species))+
-  geom_point(data=CCES_016,aes(x=Longitude,y=Latitude,color=Species))+
-  geom_point(data=CCES_020,aes(x=Longitude,y=Latitude,color=Species))+scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
+  geom_point(data=SpDF_gps,aes(x=Longitude,y=Latitude,color=Species))+
+  scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
   xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts')
 
 ```
