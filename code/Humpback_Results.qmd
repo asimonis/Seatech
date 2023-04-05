@@ -27,7 +27,7 @@ The presence of humpback whales and ships were logged by 3 Seatech analysts, inc
 # # install from GitHub
 devtools::install_github('TaikiSan21/PAMmisc')
 # devtools::install_github('ericpante/marmap')
-suppressMessages(pacman::p_load(knitr,here,lubridate,dplyr,magrittr,xlsx,RSQLite,viridis,marmap,ggplot2,suncalc,ggnewscale,PAMmisc,stringr))
+suppressMessages(pacman::p_load(knitr,here,lubridate,dplyr,magrittr,xlsx,RSQLite,viridis,marmap,ggplot2,suncalc,ggnewscale,PAMmisc,stringr,gridExtra))
 
 #Sarah's logs
 LogSB<-list.files(here('data','2023','Humpback whales','SB'), pattern='.xls',full.names = TRUE) %>%
@@ -155,33 +155,32 @@ for(d in 1:length(drifts)){
 figtitle<-c('Drift-10','Drift-12','Drift-13','Drift-14','Drift-16','Drift-20')
 
 MnColor = 'magenta'
-ShipColor = 'orange'
+ShipColor = 'blue'
 ```
 
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
-#| 
+
+
 PlotPresDrifts<-function(figtitle){
-  SpDF<-TimesAll %>%
-    filter(Drift==figtitle)
-  
   MnDF<-(TimesAll) %>%
   filter(Drift==figtitle,Species=="Mn")
-  
+
   AnthroDF<-(TimesAll) %>%
   filter(Drift==figtitle, Species=="Anthro")
   
   GPSDF<-(GPSAll) %>%
   filter(Drift==figtitle)
+
+  DielMn = plotPresGrid(MnDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",
+               bin="minute",gps=GPSDF,title=paste0(figtitle,': Humpback whales'),fill=MnColor)
+
+  DielShip = plotPresGrid(AnthroDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",
+               bin="minute",gps=GPSDF,title=paste0(figtitle,': Ships'),fill=ShipColor)
   
-    plotPresGrid(SpDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",by=Species,timeBin="minute",gps=GPSDF,title=paste0(figtitle,': Humpback whales'))
-  
-  plotPresGrid(MnDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",timeBin="minute",gps=GPSDF,title=paste0(figtitle,': Humpback whales'))
-  
-  plotPresGrid(AnthroDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",timeBin="minute",gps=GPSDF,title=paste0(figtitle,': Ships'))
-  
+  grid.arrange(DielMn,DielShip,nrow=2)
   
 }
 
@@ -203,7 +202,7 @@ PlotPresBars<-function(figtitle){
   GPSDF<-(GPSAll) %>%
   filter(Drift==figtitle)
   
-  plotPresBar(SpDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),timeBin="day",by="Species",title=paste0(figtitle,': Humpback whales and ships'),fill=Species)+
+  plotPresBar(SpDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),bin="day",by="Species",title=paste0(figtitle,': Humpback whales and ships'),fill=Species)+
     scale_fill_manual(values=c(MnColor, ShipColor))
 }
 
