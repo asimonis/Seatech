@@ -150,6 +150,36 @@ for(d in 1:length(drifts)){
 
 ```
 
+## Remove times with missing data
+
+MEHS did not have audio data for the entire length of all drifts. Only show drift tracks and events from times where data was available
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+#End dates identified by MEHS analysts
+EndDates<-as.POSIXct(c('2018-10-21 23:59','2018-09-12 23:59','2018-09-25 23:59','2018-10-11 23:59','2018-11-15 23:59','2018-11-22 23:59'),tz='GMT')
+
+#Confirm end dates match number of drifts
+if(length(EndDates)==length(drifts)){
+
+for(d in 1:length(drifts)){
+  DriftID<-paste0('Drift-',drifts[d])
+ #remove events 
+ removeEventInd<-which(TimesAll$Drift==DriftID & TimesAll$UTC>EndDates[d])
+ TimesAll<-TimesAll[-removeEventInd,]
+ remove(removeEventInd)
+ 
+ #remove GPS data
+ removeGPSInd<-which(GPSAll$Drift==DriftID & GPSAll$UTC>EndDates[d])
+ GPSAll<-GPSAll[-removeGPSInd,]
+ remove(removeGPSInd)
+}  
+}
+```
+
 ## Plots
 
 ### Diel Plot
