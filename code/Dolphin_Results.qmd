@@ -1,6 +1,5 @@
 ---
-title: "Dolphin_Visualization"
-author: "Anne Simonis"
+title: "Dolphin_Results"
 format: pdf
 editor: visual
 ---
@@ -11,7 +10,7 @@ Investigate patterns in the acoustic behavior of dolphins
 
 ## Data
 
-Acoustic data was collected from drifting acoustic recorders during the 2018 California Current Ecosystem survey. See [Simonis et al 2020](https://repository.library.noaa.gov/view/noaa/27223) for more details. Data analyzed here includes CCES Drifts 10, 12, 13, 14, 16 (no detections on 16? no log on 20).
+Acoustic data was collected from drifting acoustic recorders during the 2018 California Current Ecosystem survey. See [Simonis et al 2020](https://repository.library.noaa.gov/view/noaa/27223) for more details. Data analyzed here includes CCES Drifts 10, 12, 13, 14, 16.
 
 ## Combine Logs
 
@@ -23,9 +22,9 @@ The presence of Dolphins and ships were logged by 1 Seatech analyst: Keisha Asko
 #| warning: false
 
 # # # if (!require("pacman")) install.packages("pacman")
-# if(!require('devtools')) install.packages('devtools')
+if(!require('devtools')) install.packages('devtools')
 # # install from GitHub
-# devtools::install_github('TaikiSan21/PAMmisc')
+devtools::install_github('TaikiSan21/PAMmisc')
 # devtools::install_github('ericpante/marmap')
 suppressMessages(pacman::p_load(knitr,here,lubridate,dplyr,magrittr,xlsx,RSQLite,viridis,marmap,ggplot2,suncalc,ggnewscale,PAMmisc,stringr))
 
@@ -68,18 +67,26 @@ GPSAll<-data.frame()
 sqlite <- dbDriver("SQLite")
 dbfiles<-list.files(here('data','2023','CCES2018_Drifts','Beaked whales'),full.names=TRUE)
 
+#Use GPS csv files
+GPSfiles<-list.files(here('data','2023','CCES2018_Drifts'),pattern='.csv')
+Ind<-str_locate(GPSfiles,'CCES_')
+GPSDrift<-substr(GPSfiles,Ind+5,Ind+7)
+GPSDrift<-as.numeric(GPSDrift)
+
 for(d in 1:length(drifts)){
   DriftID<-paste0('Drift-',drifts[d])
   conn <- dbConnect(sqlite,dbfiles[which(!is.na(str_match(dbfiles,DriftID)))])
   DF <- dbReadTable(conn, "Sound_Acquisition")    
-  GPS<-dbReadTable(conn,"gpsData")
   dbDisconnect(conn)
+  
+  GPSInd<-which(GPSDrift == drifts[d])
+  GPS<-read.csv(file=here('data','2023','CCES2018_Drifts',GPSfiles[GPSInd]))
   
   GPS<-GPS %>%
     select(UTC,Latitude,Longitude)%>%
     mutate(Drift=DriftID,UTC=as.POSIXct(GPS$UTC,'%Y-%m-%d %H:%M',tz='GMT'))
-    
-    GPSAll<-rbind(GPS,GPSAll)
+  
+  GPSAll<-rbind(GPS,GPSAll)
   
   DF<-DF %>%
     mutate(Status=gsub(" ","",Status)) 
@@ -136,17 +143,17 @@ EndDates<-as.POSIXct(c('2018-09-05 23:59','2018-09-13 23:59','2018-09-26 23:59',
 
 #Confirm end dates match number of drifts
 if(length(EndDates)==length(drifts)){
+DataStop<-data.frame(EndDates,drifts=paste0('Drift-',drifts))
 
-for(d in 1:length(drifts)){
-  DriftID<-paste0('Drift-',drifts[d])
+for(d in 1:nrow(DataStop)){
  #remove events 
- removeEventInd<-which(TimesAll$Drift==DriftID & TimesAll$UTC>EndDates[d])
- TimesAll<-TimesAll[-removeEventInd,]
+ removeEventInd<-which(TimesAll$Drift==DataStop$drifts[d] & TimesAll$UTC>DataStop$EndDates[d])
+ if(length(removeEventInd)>0){TimesAll<-TimesAll[-removeEventInd,]}
  remove(removeEventInd)
  
  #remove GPS data
- removeGPSInd<-which(GPSAll$Drift==DriftID & GPSAll$UTC>EndDates[d])
- GPSAll<-GPSAll[-removeGPSInd,]
+ removeGPSInd<-which(GPSAll$Drift==DataStop$drifts[d] & GPSAll$UTC>DataStop$EndDates[d])
+  if(length(removeGPSInd)>0){GPSAll<-GPSAll[-removeGPSInd,]}
  remove(removeGPSInd)
 }  
 }
@@ -178,7 +185,7 @@ PlotPresDrifts<-function(figtitle){
   GPSDF<-(GPSAll) %>%
   filter(Drift==figtitle)
   
-  plotPresGrid(UODF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",timeBin="minute",gps=GPSDF,title=paste0(figtitle,': Dolphins'),fill=UOColor)
+  plotPresGrid(UODF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",bin="minute",gps=GPSDF,title=paste0(figtitle,': Dolphins'),fill=UOColor,plotTz='America/Los_Angeles')
 }
 
 lapply(figtitle,PlotPresDrifts)
@@ -199,7 +206,7 @@ PlotPresBars<-function(figtitle){
   GPSDF<-(GPSAll) %>%
   filter(Drift==figtitle)
   
-  plotPresBar(UODF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),timeBin="day",by="Species",title=paste0(figtitle,': Dolphins'),fill=Species)+
+  plotPresBar(UODF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),bin="day",by="Species",title=paste0(figtitle,': Dolphins'),fill=Species)+
     scale_fill_manual(values=UOColor)
 }
 
@@ -213,6 +220,8 @@ lapply(figtitle,PlotPresBars)
 #| echo: false
 #| message: false
 #| warning: false
+
+UOColor = 'yellow'
 
 #Function PlotPresMaps will map events on each drift 
 PlotPresMaps<-function(figtitle){
@@ -260,10 +269,6 @@ lapply(figtitle,PlotPresMaps)
 #| echo: false
 #| message: false
 #| warning: false
-#| fig-width: 4
-#| fig-height: 6
-#| fig-cap: Map of all drifts analyzed
-
 
 #Create dataframe with positions of all events
 UODF_gps<-data.frame()
@@ -306,7 +311,9 @@ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
 #### Drift Timeseries
 
 ```{r}
-
+#| echo: false
+#| message: false
+#| warning: false
 
 #create counts vectors to compare across time
 # get counts by hour of day- drift 10 is earliest and drift20 is latest

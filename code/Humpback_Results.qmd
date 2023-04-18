@@ -61,7 +61,6 @@ Log <-Log %>%
 
 #Rename Drifts with word 'Drift'
 Log$Input.file<-str_replace(Log$Input.file,'Drift-','CCES_')
-Log$Input.file<-str_replace(Log$Input.file,'Drift_','CCES_')
 
 #Define Drift Number based on input file
 Ind<-str_locate(Log$Input.file,'CCES_')
@@ -93,21 +92,27 @@ GPSAll<-data.frame()
 sqlite <- dbDriver("SQLite")
 dbfiles<-list.files(here('data','2023','CCES2018_Drifts','Beaked whales'),full.names=TRUE)
 
+
+#Use GPS csv files
+GPSfiles<-list.files(here('data','2023','CCES2018_Drifts'),pattern='.csv')
+Ind<-str_locate(GPSfiles,'CCES_')
+GPSDrift<-substr(GPSfiles,Ind+5,Ind+7)
+GPSDrift<-as.numeric(GPSDrift)
+
 for(d in 1:length(drifts)){
   DriftID<-paste0('Drift-',drifts[d])
   conn <- dbConnect(sqlite,dbfiles[which(!is.na(str_match(dbfiles,DriftID)))])
   DF <- dbReadTable(conn, "Sound_Acquisition")    
-  GPS<-dbReadTable(conn,"gpsData")
   dbDisconnect(conn)
   
-  #truncate log down to just detections from this drift
-  Loguse = Log[Log$Drift==drifts[d],]
+  GPSInd<-which(GPSDrift == drifts[d])
+  GPS<-read.csv(file=here('data','2023','CCES2018_Drifts',GPSfiles[GPSInd]))
   
   GPS<-GPS %>%
     select(UTC,Latitude,Longitude)%>%
     mutate(Drift=DriftID,UTC=as.POSIXct(GPS$UTC,'%Y-%m-%d %H:%M',tz='GMT'))
-    
-    GPSAll<-rbind(GPS,GPSAll)
+  
+  GPSAll<-rbind(GPS,GPSAll)
   
   DF<-DF %>%
     mutate(Status=gsub(" ","",Status)) 
@@ -129,14 +134,14 @@ for(d in 1:length(drifts)){
   TimesDF$Species<-'NA'
   
   #Loop through times to see if events span "recording on" periods               
-  for(m in 1:nrow(Loguse)){
-    IndStart<-max(which(TimesDF$Start<=Loguse$Start.time[m]))
-    IndStop<-min(which(TimesDF$Stop>=Loguse$End.time[m]))
-     # IndStop<-min(TimesDF$Stop>=Loguse$End.time[m])
+  for(m in 1:nrow(Log)){
+    IndStart<-max(which(TimesDF$Start<=Log$Start.time[m]))
+    IndStop<-min(which(TimesDF$Stop>=Log$End.time[m]))
+     # IndStop<-min(TimesDF$Stop>=Log$End.time[m])
     if(IndStart>0){
       if(is.na(IndStop) | IndStop==0 | is.infinite(IndStop)){IndStop=IndStart}
       TimesDF$Presence[IndStart:IndStop]<-'Present'
-      TimesDF$Species[IndStart:IndStop]<-rep(Loguse$Species.Code[m],length(IndStart:IndStop))
+      TimesDF$Species[IndStart:IndStop]<-rep(Log$Species.Code[m],length(IndStart:IndStop))
     }
   }              
   
@@ -164,17 +169,17 @@ EndDates<-as.POSIXct(c('2018-10-21 23:59','2018-09-12 23:59','2018-09-25 23:59',
 
 #Confirm end dates match number of drifts
 if(length(EndDates)==length(drifts)){
+DataStop<-data.frame(EndDates,drifts=paste0('Drift-',drifts))
 
 for(d in 1:length(drifts)){
-  DriftID<-paste0('Drift-',drifts[d])
  #remove events 
- removeEventInd<-which(TimesAll$Drift==DriftID & TimesAll$UTC>EndDates[d])
- TimesAll<-TimesAll[-removeEventInd,]
+ removeEventInd<-which(TimesAll$Drift==DataStop$drifts[d] & TimesAll$UTC>DataStop$EndDates[d])
+ if(length(removeEventInd)>0){TimesAll<-TimesAll[-removeEventInd,]}
  remove(removeEventInd)
  
  #remove GPS data
- removeGPSInd<-which(GPSAll$Drift==DriftID & GPSAll$UTC>EndDates[d])
- GPSAll<-GPSAll[-removeGPSInd,]
+ removeGPSInd<-which(GPSAll$Drift==DataStop$drifts[d] & GPSAll$UTC>DataStop$EndDates[d])
+  if(length(removeGPSInd)>0){GPSAll<-GPSAll[-removeGPSInd,]}
  remove(removeGPSInd)
 }  
 }
@@ -305,9 +310,7 @@ lapply(figtitle,PlotPresMaps)
 #| echo: false
 #| message: false
 #| warning: false
-#| fig-width: 4
-#| fig-height: 6
-#| fig-cap: Map of all drifts analyzed
+
 
 
 #Create dataframe with positions of all events
@@ -366,7 +369,9 @@ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
 # All-drift Timeseries
 
 ```{r}
-
+#| echo: false
+#| message: false
+#| warning: false
 #create counts vectors to compare across time
 # get counts by hour of day- drift 10 is earliest and drift20 is latest
 daybins = seq(as.POSIXct(min(TimesAll$UTC)),as.POSIXct(max(TimesAll$UTC)),'days')
