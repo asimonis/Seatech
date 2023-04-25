@@ -253,6 +253,9 @@ lapply(figtitle,PlotPresBars)
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-width: 4 
+#| fig-height: 4 
+
 #Function PlotPresMaps will map events on each drift 
 PlotPresMaps<-function(figtitle){
   MnDF<-(TimesAll) %>%
@@ -310,8 +313,8 @@ lapply(figtitle,PlotPresMaps)
 #| echo: false
 #| message: false
 #| warning: false
-
-
+#| fig-width: 4 
+#| fig-height: 5 
 
 #Create dataframe with positions of all events
 SpDF_gps<-data.frame()
@@ -353,6 +356,16 @@ lon1=-132;lon2=-114;lat1=27;lat2=50
 #Extract bathymetry data from NOAA (saves local file to speed future performance)
 bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
 
+#Map with only drift tracks 
+autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
+  coord_cartesian(expand = 0)+
+  geom_contour(aes(z=z),breaks=c(-1000),color="gray24")+
+  scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
+                       colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
+  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.1)+
+  ggtitle('All Drifts')
+
+
 autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   coord_cartesian(expand = 0)+
   geom_contour(aes(z=z),breaks=c(-1000),color="gray24")+
@@ -362,7 +375,7 @@ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   new_scale_color()+
   geom_point(data=SpDF_gps,aes(x=Longitude,y=Latitude,color=Species))+
   scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts')
+  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts: Humpback whales and Ships')
 
 ```
 
