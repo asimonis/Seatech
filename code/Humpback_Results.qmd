@@ -363,6 +363,7 @@ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
                        colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
   geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.1)+
+  xlab('Longitude')+ylab('Latitude')+
   ggtitle('All Drifts')
 
 
