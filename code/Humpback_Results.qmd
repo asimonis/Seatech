@@ -130,29 +130,35 @@ for(d in 1:length(drifts)){
   TimesDF<-data.frame(Start=StartUTC,Stop=StopUTC) %>%
     mutate(Drift = DriftID)
   
-  TimesDF$Presence<-'Absent'
-  TimesDF$Species<-'NA'
-  
-  #Loop through times to see if events span "recording on" periods               
-  for(m in 1:nrow(Log)){
-    IndStart<-max(which(TimesDF$Start<=Log$Start.time[m]))
-    IndStop<-min(which(TimesDF$Stop>=Log$End.time[m]))
-     # IndStop<-min(TimesDF$Stop>=Log$End.time[m])
+  #Humpback Events
+  TimesDF$Mn<-'Absent'
+
+  #Loop through times to see if Mn events span "recording on" periods 
+  LogMn<-filter(Log,Species.Code=='Mn', Drift==drifts[d])
+  for(m in 1:nrow(LogMn)){
+    IndStart<-max(which(TimesDF$Start<=LogMn$Start.time[m]))
+    IndStop<-min(which(TimesDF$Stop>=LogMn$End.time[m]))
     if(IndStart>0){
       if(is.na(IndStop) | IndStop==0 | is.infinite(IndStop)){IndStop=IndStart}
-      TimesDF$Presence[IndStart:IndStop]<-'Present'
-      TimesDF$Species[IndStart:IndStop]<-rep(Log$Species.Code[m],length(IndStart:IndStop))
+      TimesDF$Mn[IndStart:IndStop]<-'Mn'
     }
   }              
   
-  TimesDF<-TimesDF %>% 
-    filter(Presence=="Present")%>%
-    select(Start,Drift,Species) %>%
-    rename(UTC=Start)
+    #Ship Events
+  TimesDF$Ship<-'Absent'
 
+  #Loop through times to see if Mn events span "recording on" periods 
+  LogShip<-filter(Log,Species.Code=='Anthro', Drift==drifts[d])
+  for(m in 1:nrow(LogShip)){
+    IndStart<-max(which(TimesDF$Start<=LogShip$Start.time[m]))
+    IndStop<-min(which(TimesDF$Stop>=LogShip$End.time[m]))
+    if(IndStart>0){
+      if(is.na(IndStop) | IndStop==0 | is.infinite(IndStop)){IndStop=IndStart}
+      TimesDF$Ship[IndStart:IndStop]<-'Ship'
+    }
+  }              
   TimesAll<-rbind(TimesDF,TimesAll)
 }
-
 ```
 
 ## Remove times with missing data
@@ -190,11 +196,26 @@ for(d in 1:length(drifts)){
 ### Diel Plot
 
 ```{r}
+#| echo: false
+#| message: false
+#| warning: false
 #Define Figure Options
 figtitle<-c('Drift-10','Drift-12','Drift-13','Drift-14','Drift-16','Drift-20')
 
 MnColor = 'blue'
 ShipColor = 'magenta'
+
+TimesAllMn<-TimesAll %>%
+  filter(Mn=="Mn")%>%
+  select(Start,Drift,Mn)%>%
+  rename(UTC=Start,Species=Mn)
+
+TimesAllShip<-TimesAll %>%
+  filter(Ship=="Ship")%>%
+  select(Start,Drift,Ship)%>%
+  rename(UTC=Start,Species=Ship)
+
+TimesAll<-rbind(TimesAllMn,TimesAllShip)
 ```
 
 ```{r}
@@ -202,20 +223,22 @@ ShipColor = 'magenta'
 #| message: false
 #| warning: false
 
-
 PlotPresDrifts<-function(figtitle){
-  MnDF<-(TimesAll) %>%
-  filter(Drift==figtitle,Species=="Mn")
+ 
+   MnDF<-(TimesAllMn) %>%
+  filter(Drift==figtitle)%>%
+    select(UTC,Drift,Species)
 
-  AnthroDF<-(TimesAll) %>%
-  filter(Drift==figtitle, Species=="Anthro")
+  ShipDF<-(TimesAllShip) %>%
+  filter(Drift==figtitle)%>%
+    select(UTC,Drift,Species)
   
   GPSDF<-(GPSAll) %>%
   filter(Drift==figtitle)
 
-  DielMn = plotPresGrid(MnDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",gps=GPSDF,title=paste0(figtitle,': Humpback whales'),fill=MnColor)
+  DielMn<-plotPresGrid(MnDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",bin="minute",gps=GPSDF,title=paste0(figtitle,': Humpback whales'),fill=MnColor)
 
-  DielShip = plotPresGrid(AnthroDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",gps=GPSDF,title=paste0(figtitle,': Ships'),fill=ShipColor)
+  DielShip<- plotPresGrid(ShipDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",bin="minute",gps=GPSDF,title=paste0(figtitle,': Ships'),fill=ShipColor)
   
   grid.arrange(DielMn,DielShip,nrow=2)
   
@@ -232,18 +255,19 @@ lapply(figtitle,PlotPresDrifts)
 #| message: false
 #| warning: false
 
-PlotPresBars<-function(figtitle){
-  SpDF<-(TimesAll) %>%
-  filter(Drift==figtitle)
-  
-  GPSDF<-(GPSAll) %>%
-  filter(Drift==figtitle)
-  
-  plotPresBar(SpDF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),by="Species",title=paste0(figtitle,': Humpback whales and ships'),fill=Species)+
-    scale_fill_manual(values=c(ShipColor, MnColor))
-}
+   SpDFSum<-(TimesAll) %>%
+    mutate(Hour=hour(UTC),Date=as.Date(UTC)) %>%
+    group_by(Drift,Species,Date) %>%
+    summarize(HourCount = length(unique(Hour)))
+   
+   
+ggplot(SpDFSum,aes(Date,HourCount,fill=Species))+
+   geom_bar(stat="identity",position=position_dodge2(width=.8,preserve='single'))+
+   ggtitle('Humpback whales and ships')+
+   scale_fill_manual(values=c("Ship"=ShipColor, "Mn"=MnColor))+
+   ylab('Hours with detections')+
+  facet_grid(Drift~.,scales = "free",space="free")
 
-lapply(figtitle,PlotPresBars)
 
 ```
 
@@ -261,8 +285,8 @@ PlotPresMaps<-function(figtitle){
   MnDF<-(TimesAll) %>%
     filter(Drift==figtitle, Species=="Mn")
   
-  AnthroDF<-(TimesAll) %>%
-    filter(Drift==figtitle, Species=="Anthro")
+  ShipDF<-(TimesAll) %>%
+    filter(Drift==figtitle, Species=="Ship")
   
   GPSDF<-(GPSAll) %>%
     filter(Drift==figtitle)
@@ -273,13 +297,13 @@ PlotPresMaps<-function(figtitle){
     MnDF$Longitude[c]<-GPSDF$Longitude[Ind]
     MnDF$Latitude[c]<-GPSDF$Latitude[Ind]
   }
-    for(c in 1:nrow(AnthroDF)){
-    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,AnthroDF$UTC[c],units="mins"))))
-    AnthroDF$Longitude[c]<-GPSDF$Longitude[Ind]
-    AnthroDF$Latitude[c]<-GPSDF$Latitude[Ind]
+    for(c in 1:nrow(ShipDF)){
+    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,ShipDF$UTC[c],units="mins"))))
+    ShipDF$Longitude[c]<-GPSDF$Longitude[Ind]
+    ShipDF$Latitude[c]<-GPSDF$Latitude[Ind]
   }
   
-  SpDF<-rbind(MnDF,AnthroDF)
+  SpDF<-rbind(MnDF,ShipDF)
 
   #define boundaries of the map
   lon1<-min(GPSDF$Longitude)-2
@@ -323,7 +347,7 @@ for(d in 1:length(figtitle)){
     MnDF<-(TimesAll) %>%
     filter(Drift==figtitle[d],Species=="Mn")
   
-   AnthroDF<-(TimesAll) %>%
+   ShipDF<-(TimesAll) %>%
     filter(Drift==figtitle[d],Species=="Anthro")
   
   GPSDF<-(GPSAll) %>%

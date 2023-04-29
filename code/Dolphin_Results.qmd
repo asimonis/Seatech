@@ -125,8 +125,8 @@ for(d in 1:length(drifts)){
   TimesDF$UO<-'Absent'
   
   #Loop through times to see if UO events span "recording on" periods
-  LogUO<-filter(Log,Species.Code=="UO")
-   for(m in 1:nrow(Log)){
+  LogUO<-filter(Log,Species.Code=="UO", Drift==drifts[d])
+   for(m in 1:nrow(LogUO)){
     IndStart<-max(which(TimesDF$Start<=LogUO$Start.time[m]))
     IndStop<-min(which(TimesDF$Stop>=LogUO$End.time[m]))
     if(IndStart>0){
@@ -147,8 +147,8 @@ for(d in 1:length(drifts)){
   #Gg Events
   TimesDF$Gg<-'Absent'
   #Loop through times to see if UO events span "recording on" periods
-  LogGg<-filter(Log,Species.Code=="Gg")
-   for(m in 1:nrow(Log)){
+  LogGg<-filter(Log,Species.Code=="Gg", Drift==drifts[d])
+   for(m in 1:nrow(LogGg)){
     IndStart<-max(which(TimesDF$Start<=LogGg$Start.time[m]))
     IndStop<-min(which(TimesDF$Stop>=LogGg$End.time[m]))
     if(IndStart>0){
@@ -166,6 +166,9 @@ for(d in 1:length(drifts)){
   
   TimesAllGg<-rbind(TimesGg,TimesAllGg)
 }
+
+
+
 
 ```
 
