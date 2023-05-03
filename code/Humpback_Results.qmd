@@ -61,6 +61,7 @@ Log <-Log %>%
 
 #Rename Drifts with word 'Drift'
 Log$Input.file<-str_replace(Log$Input.file,'Drift-','CCES_')
+Log$Input.file<-str_replace(Log$Input.file,'Drift_','CCES_')
 
 #Define Drift Number based on input file
 Ind<-str_locate(Log$Input.file,'CCES_')
@@ -202,8 +203,8 @@ for(d in 1:length(drifts)){
 #Define Figure Options
 figtitle<-c('Drift-10','Drift-12','Drift-13','Drift-14','Drift-16','Drift-20')
 
-MnColor = 'blue'
-ShipColor = 'magenta'
+MnColor = 'yellow'
+ShipColor = 'red'
 
 TimesAllMn<-TimesAll %>%
   filter(Mn=="Mn")%>%
@@ -248,30 +249,58 @@ lapply(figtitle,PlotPresDrifts)
 
 ```
 
-### **Weekly Plot**
+### **Daily Plot (# of hours with detections each day)**
 
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-width: 8
+#| fig-height: 8
 
-   SpDFSum<-(TimesAll) %>%
+SpDFSum<-TimesAll %>%
     mutate(Hour=hour(UTC),Date=as.Date(UTC)) %>%
     group_by(Drift,Species,Date) %>%
-    summarize(HourCount = length(unique(Hour)))
+    summarize(HourCount = length(unique(Hour))) %>%
+    mutate(Day = as.POSIXct(Date))
    
    
-ggplot(SpDFSum,aes(Date,HourCount,fill=Species))+
+ggplot(SpDFSum,aes(Day,HourCount,fill=Species))+
    geom_bar(stat="identity",position=position_dodge2(width=.8,preserve='single'))+
    ggtitle('Humpback whales and ships')+
    scale_fill_manual(values=c("Ship"=ShipColor, "Mn"=MnColor))+
+   scale_x_datetime(date_breaks = '2 weeks', date_labels="%b-%d")+
    ylab('Hours with detections')+
-  facet_grid(Drift~.,scales = "free",space="free")
-
+   facet_grid(Drift~.,scales = "free",space="free")+
+   theme(panel.background = element_rect(fill = "midnightblue"),
+          panel.grid.major = element_line(color = 'black', linetype = 'dotted'),panel.grid.minor = element_line(color = 'black',linetype = 'dotted', size = .5))
 
 ```
 
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 8
+#| fig-height: 2
+
+for(f in 1:length(figtitle)){
+  DriftDF<-filter(SpDFSum,Drift==figtitle[f])
+
+print(ggplot( DriftDF,aes(Day,HourCount,fill=Species))+
+   geom_bar(stat="identity",position=position_dodge2(width=.8,preserve='single'))+
+   ggtitle(paste(figtitle[f],': Humpback whales and ships'))+
+   scale_fill_manual(values=c("Ship"=ShipColor, "Mn"=MnColor))+
+   scale_x_datetime(date_breaks = '2 weeks', date_labels="%b-%d")+
+   ylab('Hours with detections')+
+   theme(panel.background = element_rect(fill = "midnightblue"),
+          panel.grid.major = element_line(color = 'black', linetype = 'dotted'),panel.grid.minor = element_line(color = 'black',linetype = 'dotted', size = .5)))
+  }
+```
+
 ### Map
+
+#### Ship Maps
 
 ```{r}
 #| echo: false
@@ -280,31 +309,22 @@ ggplot(SpDFSum,aes(Date,HourCount,fill=Species))+
 #| fig-width: 4 
 #| fig-height: 4 
 
-#Function PlotPresMaps will map events on each drift 
-PlotPresMaps<-function(figtitle){
-  MnDF<-(TimesAll) %>%
-    filter(Drift==figtitle, Species=="Mn")
+#Function PlotPresShipMaps will map ship events on each drift 
+for(f in 1:length(figtitle)){
   
   ShipDF<-(TimesAll) %>%
-    filter(Drift==figtitle, Species=="Ship")
+    filter(Drift==figtitle[f], Species=="Ship")
   
   GPSDF<-(GPSAll) %>%
-    filter(Drift==figtitle)
+    filter(Drift==figtitle[f])
   
   #Define position of each event
-  for(c in 1:nrow(MnDF)){
-    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,MnDF$UTC[c],units="mins"))))
-    MnDF$Longitude[c]<-GPSDF$Longitude[Ind]
-    MnDF$Latitude[c]<-GPSDF$Latitude[Ind]
-  }
     for(c in 1:nrow(ShipDF)){
     Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,ShipDF$UTC[c],units="mins"))))
     ShipDF$Longitude[c]<-GPSDF$Longitude[Ind]
     ShipDF$Latitude[c]<-GPSDF$Latitude[Ind]
-  }
-  
-  SpDF<-rbind(MnDF,ShipDF)
-
+    }
+  if(nrow(ShipDF)<1){next}
   #define boundaries of the map
   lon1<-min(GPSDF$Longitude)-2
   lon2<-max(GPSDF$Longitude)+2
@@ -314,20 +334,69 @@ PlotPresMaps<-function(figtitle){
   #Extract bathymetry data from NOAA (saves local file to speed future performance)
   bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
 
-  autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
+  #Ships
+    print(autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
     coord_cartesian(expand = 0)+
     geom_contour(aes(z=z),breaks=c(-100,-500,-1000),color="gray24")+
     scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
                          colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-    geom_point(data=GPSDF,aes(Longitude,Latitude),size=0.1)+
+    geom_point(data=GPSDF,aes(Longitude,Latitude),size=0.05,color='gray92')+
     new_scale_color()+
-    geom_point(data=SpDF,aes(x=Longitude,y=Latitude,color=Species))+
-scale_color_manual(values=c(MnColor, ShipColor), labels=c("Humpback whales", "Ships"),name="")+
-    xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle)
-
+    geom_point(data=ShipDF,aes(x=Longitude,y=Latitude,color=Species),size=.5)+
+scale_color_manual(values=c("Ship"=ShipColor),name="")+
+    xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle[f]))
 }
 
-lapply(figtitle,PlotPresMaps)
+
+
+```
+
+#### Humpback Maps
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 4 
+#| fig-height: 4 
+
+#Function PlotPresMaps will map events on each drift 
+for(f in 1:length(figtitle)){
+  MnDF<-(TimesAll) %>%
+    filter(Drift==figtitle[f], Species=="Mn")
+  
+  GPSDF<-(GPSAll) %>%
+    filter(Drift==figtitle[f])
+  
+  #Define position of each event
+  for(c in 1:nrow(MnDF)){
+    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,MnDF$UTC[c],units="mins"))))
+    MnDF$Longitude[c]<-GPSDF$Longitude[Ind]
+    MnDF$Latitude[c]<-GPSDF$Latitude[Ind]
+  }
+    if(nrow(MnDF)<1){next}
+  
+  #define boundaries of the map
+  lon1<-min(GPSDF$Longitude)-2
+  lon2<-max(GPSDF$Longitude)+2
+  lat1<-max(GPSDF$Latitude)+2
+  lat2<-min(GPSDF$Latitude)-2
+
+  #Extract bathymetry data from NOAA (saves local file to speed future performance)
+  bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
+
+  #Whales
+ print(autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
+    coord_cartesian(expand = 0)+
+    geom_contour(aes(z=z),breaks=c(-100,-500,-1000),color="gray24")+
+    scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
+                         colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
+    geom_point(data=GPSDF,aes(Longitude,Latitude),size=0.05,color='gray92')+
+    new_scale_color()+
+    geom_point(data=MnDF,aes(x=Longitude,y=Latitude,color=Species),size=.5)+
+scale_color_manual(values=c("Mn"=MnColor),name="")+
+    xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle[f]))
+}
 
 ```
 
@@ -337,8 +406,8 @@ lapply(figtitle,PlotPresMaps)
 #| echo: false
 #| message: false
 #| warning: false
-#| fig-width: 4 
-#| fig-height: 5 
+#| fig-width: 9 
+#| fig-height: 8 
 
 #Create dataframe with positions of all events
 SpDF_gps<-data.frame()
@@ -348,7 +417,7 @@ for(d in 1:length(figtitle)){
     filter(Drift==figtitle[d],Species=="Mn")
   
    ShipDF<-(TimesAll) %>%
-    filter(Drift==figtitle[d],Species=="Anthro")
+    filter(Drift==figtitle[d],Species=="Ship")
   
   GPSDF<-(GPSAll) %>%
     filter(Drift==figtitle[d])
@@ -360,22 +429,22 @@ for(d in 1:length(figtitle)){
     MnDF$Latitude[c]<-GPSDF$Latitude[Ind]
   }
   
-   for(c in 1:nrow(AnthroDF)){
-    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,AnthroDF$UTC[c],units="mins"))))
-    AnthroDF$Longitude[c]<-GPSDF$Longitude[Ind]
-    AnthroDF$Latitude[c]<-GPSDF$Latitude[Ind]
+   for(c in 1:nrow(ShipDF)){
+    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,ShipDF$UTC[c],units="mins"))))
+    ShipDF$Longitude[c]<-GPSDF$Longitude[Ind]
+    ShipDF$Latitude[c]<-GPSDF$Latitude[Ind]
   }
   
-  DF<-rbind(MnDF,AnthroDF)
+  DF<-rbind(MnDF,ShipDF)
   
 SpDF_gps<-rbind(DF,SpDF_gps)
 DF<-data.frame()
 MnDF<-data.frame()
-AnthroDF<-data.frame()
+ShipDF<-data.frame()
 }
 
 #define boundaries of the map
-lon1=-132;lon2=-114;lat1=27;lat2=50
+lon1=-126;lon2=-114;lat1=27;lat2=40
 
 #Extract bathymetry data from NOAA (saves local file to speed future performance)
 bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
@@ -386,7 +455,7 @@ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   geom_contour(aes(z=z),breaks=c(-1000),color="gray24")+
   scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
                        colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.1)+
+  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.05,color='gray92')+
   xlab('Longitude')+ylab('Latitude')+
   ggtitle('All Drifts')
 
@@ -396,10 +465,10 @@ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   geom_contour(aes(z=z),breaks=c(-1000),color="gray24")+
   scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
                        colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.1)+
+  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.01,color='gray92')+
   new_scale_color()+
-  geom_point(data=SpDF_gps,aes(x=Longitude,y=Latitude,color=Species))+
-  scale_color_manual(values=c(MnColor,ShipColor), labels=c("Humpback whales","Ships"),name="")+
+  geom_point(data=SpDF_gps,aes(x=Longitude,y=Latitude,color=Species,alpha=0.3),size=0.05,position="jitter")+
+  scale_color_manual(values=c("Mn"=MnColor,"Ship"=ShipColor),name="")+
   xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts: Humpback whales and Ships')
 
 ```
@@ -410,6 +479,8 @@ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
 #| echo: false
 #| message: false
 #| warning: false
+#| #| fig-width: 6  
+#| fig-height: 8 
 #create counts vectors to compare across time
 # get counts by hour of day- drift 10 is earliest and drift20 is latest
 daybins = seq(as.POSIXct(min(TimesAll$UTC)),as.POSIXct(max(TimesAll$UTC)),'days')
@@ -427,7 +498,7 @@ for (iD in 1:length(figtitle)){
 
 driftTimes = filter(TimesAll,Drift==figtitle[iD])
 countdataMn = histc(as.numeric(driftTimes[driftTimes$Species=="Mn",]$UTC),as.numeric(daybins))
-countdataAnth = histc(as.numeric(driftTimes[driftTimes$Species=="Anthro",]$UTC),as.numeric(daybins))
+countdataAnth = histc(as.numeric(driftTimes[driftTimes$Species=="Ship",]$UTC),as.numeric(daybins))
 
 countdfMn = data.frame(daybins)
 countdfAn = data.frame(daybins)
@@ -438,13 +509,13 @@ if (iD > 1){
   countdfMn$id = rep("Mn",length(daybins))
   countdfAn$counts = countdataAnth$cnt
   countdfAn$drift = rep(figtitle[iD],length(daybins))
-  countdfAn$id = rep("Anthro",length(daybins))
+  countdfAn$id = rep("Ship",length(daybins))
 
   driftcounts = rbind(countdfMn,countdfAn)
   allcounts = rbind(allcounts,driftcounts)
 }else{
   tempMn$counts = countdataMn$cnt; tempMn$id = rep("Mn",length(daybins))
-  tempAn$counts = countdataAnth$cnt; tempAn$id = rep("Anthro",length(daybins))
+  tempAn$counts = countdataAnth$cnt; tempAn$id = rep("Ship",length(daybins))
   
   allcounts = rbind(tempMn,tempAn)
 allcounts$drift = rep(figtitle[iD],length(daybins)*2)
@@ -456,9 +527,11 @@ allcounts$counts[allcounts$counts==0]=NA
 
 #plotting
 ggplot(data=allcounts,aes(x=daybins,y=counts,color=id))+ 
-geom_point()+
+geom_point(size=.5)+
   scale_color_manual(values=c(ShipColor,MnColor))+
-facet_wrap(~drift,ncol=1)
+facet_wrap(~drift,ncol=1)+
+   theme(panel.background = element_rect(fill = "midnightblue"),
+          panel.grid.major = element_line(color = 'black', linetype = 'dotted'),panel.grid.minor = element_line(color = 'black',linetype = 'dotted', size = .5))
 
 ```
 
