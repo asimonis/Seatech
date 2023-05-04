@@ -138,7 +138,7 @@ for(d in 1:length(drifts)){
   
     TimesUO<-TimesDF %>% 
     filter(UO=="Present")%>%
-    mutate(Species=as.factor('Unidentified Dolphin')) %>%
+    mutate(Species=as.factor('UO')) %>%
     select(Start,Drift,Species) %>%
     rename(UTC=Start)
   
@@ -160,7 +160,7 @@ for(d in 1:length(drifts)){
   
   TimesGg<-TimesDF %>% 
     filter(Gg=="Present")%>%
-    mutate(Species=as.factor('Risso\'s dolphin')) %>%
+    mutate(Species=as.factor('Gg')) %>%
     select(Start,Drift,Species) %>%
     rename(UTC=Start)
   
@@ -208,8 +208,8 @@ if(length(EndDates)==length(drifts)){
 
 figtitle<-c('Drift-10','Drift-12','Drift-13','Drift-14','Drift-16')
 
-UOColor = 'yellow'
-GgColor = 'red'
+UOColor = 'deeppink1'
+GgColor = 'darkgoldenrod1'
 ```
 
 #### UO
@@ -312,6 +312,7 @@ print(ggplot( DriftDF,aes(Day,HourCount,fill=Species))+
 ### Map
 
 ### Unidentified Dolphin Map
+
 ```{r}
 #| echo: false
 #| message: false
@@ -377,7 +378,7 @@ for(f in 1:length(figtitle)){
     filter(Drift==figtitle[f])
   
   #Define position of each event
-  for(c in 1:nrow(UODF)){
+  for(c in 1:nrow(GgDF)){
     Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,GgDF$UTC[c],units="mins"))))
     GgDF$Longitude[c]<-GPSDF$Longitude[Ind]
     GgDF$Latitude[c]<-GPSDF$Latitude[Ind]
@@ -477,7 +478,7 @@ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   new_scale_color()+
   geom_point(data=SpDF_gps,aes(x=Longitude,y=Latitude,color=Species,alpha=0.3),size=0.05,position="jitter")+
   scale_color_manual(values=c("UO"=UOColor,"Gg"=GgColor),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts: Unidentified Dolphins and Risso/s Dolphins')
+  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts: Unidentified Dolphins and Risso\s Dolphins')
 
 ```
 
@@ -504,7 +505,7 @@ tempUO = allcounts
 
 for (iD in 1:length(figtitle)){
 
-driftTimes = filter(TimesAll,Drift==figtitle[iD])
+driftTimes = filter(TimesAllUO,Drift==figtitle[iD])
 countdataUO = histc(as.numeric(driftTimes[driftTimes$Species=="UO",]$UTC),as.numeric(daybins))
 
 countdfUO = data.frame(daybins)
@@ -519,7 +520,7 @@ if (iD > 1){
   tempUO$counts = countdataUO$cnt; tempUO$id = rep("UO",length(daybins))
 
   allcounts = tempUO
-allcounts$drift = rep(figtitle[iD],length(daybins)*2)
+allcounts$drift = rep(figtitle[iD],length(daybins))
 }
 }
 
@@ -529,7 +530,7 @@ allcounts$counts[allcounts$counts==0]=NA
 #plotting
 ggplot(data=allcounts,aes(x=daybins,y=counts,color=id))+ 
 geom_point(size=.5)+
-  scale_color_manual(values=c(GgColor,UOColor))+
+  scale_color_manual(values=c(UOColor,GgColor))+
 facet_wrap(~drift,ncol=1)+
    theme(panel.background = element_rect(fill = "midnightblue"),
           panel.grid.major = element_line(color = 'black', linetype = 'dotted'),panel.grid.minor = element_line(color = 'black',linetype = 'dotted', size = .5))
