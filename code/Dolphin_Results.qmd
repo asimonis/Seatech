@@ -478,7 +478,7 @@ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   new_scale_color()+
   geom_point(data=SpDF_gps,aes(x=Longitude,y=Latitude,color=Species,alpha=0.3),size=0.05,position="jitter")+
   scale_color_manual(values=c("UO"=UOColor,"Gg"=GgColor),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts: Unidentified Dolphins and Risso\s Dolphins')
+  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts: Unidentified Dolphins and Risso\'s Dolphins')
 
 ```
 
