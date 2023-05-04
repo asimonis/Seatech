@@ -138,7 +138,7 @@ for(d in 1:length(drifts)){
   
     TimesUO<-TimesDF %>% 
     filter(UO=="Present")%>%
-    mutate(Species=as.factor('Unidentified Dolphin')) %>%
+    mutate(Species=as.factor('UO')) %>%
     select(Start,Drift,Species) %>%
     rename(UTC=Start)
   
@@ -160,15 +160,12 @@ for(d in 1:length(drifts)){
   
   TimesGg<-TimesDF %>% 
     filter(Gg=="Present")%>%
-    mutate(Species=as.factor('Risso\'s dolphin')) %>%
+    mutate(Species=as.factor('Gg')) %>%
     select(Start,Drift,Species) %>%
     rename(UTC=Start)
   
   TimesAllGg<-rbind(TimesGg,TimesAllGg)
 }
-
-
-
 
 ```
 
@@ -210,8 +207,9 @@ if(length(EndDates)==length(drifts)){
 #Define Figure Options
 
 figtitle<-c('Drift-10','Drift-12','Drift-13','Drift-14','Drift-16')
-UOColor = 'blue'
-GgColor = 'magenta'
+
+UOColor = 'deeppink1'
+GgColor = 'darkgoldenrod1'
 ```
 
 #### UO
@@ -221,12 +219,15 @@ GgColor = 'magenta'
 #| message: false
 #| warning: false
 
+
 PlotPresDrifts<-function(figtitle){
   UODF<-(TimesAllUO) %>%
-  filter(Drift==figtitle)
+  filter(Drift==figtitle) #%>%
+    #select(UTC,Drift,Species)
   
   GPSDF<-(GPSAll) %>%
   filter(Drift==figtitle)
+
   
   plotPresGrid(UODF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),type="presence",bin="minute",gps=GPSDF,title=paste0(figtitle,': Unidentified Dolphins'),fill=UOColor,plotTz='America/Los_Angeles')
   
@@ -259,46 +260,73 @@ PlotPresDrifts<-function(figtitle){
 lapply(figtitle,PlotPresDrifts)
 ```
 
-### Weekly Plot
+### **Daily Plot (# of hours with detections each day)**
 
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-width: 8
+#| fig-height: 8
 
-PlotPresBars<-function(figtitle){
-  UODF<-(TimesAllUO) %>%
-  filter(Drift==figtitle)
-  
-  GPSDF<-(GPSAll) %>%
-  filter(Drift==figtitle)
-  
-  plotPresBar(UODF,start=min(GPSDF$UTC),end=max(GPSDF$UTC),bin="day",by="Species",title=paste0(figtitle,': Dolphins'),fill=Species)+
-    scale_fill_manual(values=UOColor)
-}
+SpDFSum<-TimesAllUO %>%
+    mutate(Hour=hour(UTC),Date=as.Date(UTC)) %>%
+    group_by(Drift,Species,Date) %>%
+    summarize(HourCount = length(unique(Hour))) %>%
+    mutate(Day = as.POSIXct(Date))
+   
+   
+ggplot(SpDFSum,aes(Day,HourCount,fill=Species))+
+   geom_bar(stat="identity",position=position_dodge2(width=.8,preserve='single'))+
+   ggtitle('Unidentified Dolphins')+
+   scale_fill_manual(values=c("UO"=UOColor))+
+   scale_x_datetime(date_breaks = '2 weeks', date_labels="%b-%d")+
+   ylab('Hours with detections')+
+   facet_grid(Drift~.,scales = "free",space="free")+
+   theme(panel.background = element_rect(fill = "midnightblue"),
+          panel.grid.major = element_line(color = 'black', linetype = 'dotted'),panel.grid.minor = element_line(color = 'black',linetype = 'dotted', size = .5))
 
-lapply(figtitle,PlotPresBars)
+```
 
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 8
+#| fig-height: 2
+
+for(f in 1:length(figtitle)){
+  DriftDF<-filter(SpDFSum,Drift==figtitle[f])
+
+print(ggplot( DriftDF,aes(Day,HourCount,fill=Species))+
+   geom_bar(stat="identity",position=position_dodge2(width=.8,preserve='single'))+
+   ggtitle(paste(figtitle[f],': Unidentified Dolphins'))+
+   scale_fill_manual(values=c("UO"=UOColor))+
+   scale_x_datetime(date_breaks = '2 weeks', date_labels="%b-%d")+
+   ylab('Hours with detections')+
+   theme(panel.background = element_rect(fill = "midnightblue"),
+          panel.grid.major = element_line(color = 'black', linetype = 'dotted'),panel.grid.minor = element_line(color = 'black',linetype = 'dotted', size = .5)))
+  }
 ```
 
 ### Map
 
-#### UO
+### Unidentified Dolphin Map
 
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
-
-UOColor = 'yellow'
+#| fig-width: 4 
+#| fig-height: 4 
 
 #Function PlotPresMaps will map events on each drift 
-PlotPresMaps<-function(figtitle){
+for(f in 1:length(figtitle)){
   UODF<-(TimesAllUO) %>%
-    filter(Drift==figtitle)
+    filter(Drift==figtitle[f], Species=="UO")
   
   GPSDF<-(GPSAll) %>%
-    filter(Drift==figtitle)
+    filter(Drift==figtitle[f])
   
   #Define position of each event
   for(c in 1:nrow(UODF)){
@@ -306,7 +334,8 @@ PlotPresMaps<-function(figtitle){
     UODF$Longitude[c]<-GPSDF$Longitude[Ind]
     UODF$Latitude[c]<-GPSDF$Latitude[Ind]
   }
-
+    if(nrow(UODF)<1){next}
+  
   #define boundaries of the map
   lon1<-min(GPSDF$Longitude)-2
   lon2<-max(GPSDF$Longitude)+2
@@ -316,19 +345,18 @@ PlotPresMaps<-function(figtitle){
   #Extract bathymetry data from NOAA (saves local file to speed future performance)
   bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
 
-  autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
+  #Whales
+ print(autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
     coord_cartesian(expand = 0)+
     geom_contour(aes(z=z),breaks=c(-100,-500,-1000),color="gray24")+
     scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
                          colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-    geom_point(data=GPSDF,aes(Longitude,Latitude),size=0.1)+
+    geom_point(data=GPSDF,aes(Longitude,Latitude),size=0.05,color='gray92')+
     new_scale_color()+
-    geom_point(data=UODF,aes(x=Longitude,y=Latitude,color=Species))+scale_color_manual(values=c(UOColor), labels=c("Unidentified Dolphins"),name="")+
-    xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle)
-
+    geom_point(data=UODF,aes(x=Longitude,y=Latitude,color=Species),size=.5)+
+scale_color_manual(values=c("UO"=UOColor),name="")+
+    xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle[f]))
 }
-
-lapply(figtitle,PlotPresMaps)
 
 ```
 
@@ -338,16 +366,16 @@ lapply(figtitle,PlotPresMaps)
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-width: 4 
+#| fig-height: 4 
 
-GgColor = 'magenta'
-
-#Function PlotPresMaps will map Gg events from Drift 10
-
+#Function PlotPresMaps will map events on each drift 
+for(f in 1:length(figtitle)){
   GgDF<-(TimesAllGg) %>%
-    filter(Drift=='Drift-10')
+    filter(Drift==figtitle[f], Species=="Gg")
   
   GPSDF<-(GPSAll) %>%
-    filter(Drift=='Drift-10')
+    filter(Drift==figtitle[f])
   
   #Define position of each event
   for(c in 1:nrow(GgDF)){
@@ -355,7 +383,8 @@ GgColor = 'magenta'
     GgDF$Longitude[c]<-GPSDF$Longitude[Ind]
     GgDF$Latitude[c]<-GPSDF$Latitude[Ind]
   }
-
+    if(nrow(GgDF)<1){next}
+  
   #define boundaries of the map
   lon1<-min(GPSDF$Longitude)-2
   lon2<-max(GPSDF$Longitude)+2
@@ -365,16 +394,18 @@ GgColor = 'magenta'
   #Extract bathymetry data from NOAA (saves local file to speed future performance)
   bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
 
-  autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
+  #Whales
+ print(autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
     coord_cartesian(expand = 0)+
     geom_contour(aes(z=z),breaks=c(-100,-500,-1000),color="gray24")+
     scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
                          colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-    geom_point(data=GPSDF,aes(Longitude,Latitude),size=0.1)+
+    geom_point(data=GPSDF,aes(Longitude,Latitude),size=0.05,color='gray92')+
     new_scale_color()+
-    geom_point(data=GgDF,aes(x=Longitude,y=Latitude,color=GgColor))+scale_color_manual(values=c(GgColor), labels=c("Risso\'s Dolphins"),name="")+
-    xlab('Longitude')+ylab('Latitude')+ggtitle('Drift-10')
-
+    geom_point(data=GgDF,aes(x=Longitude,y=Latitude,color=Species),size=.5)+
+scale_color_manual(values=c("Gg"=GgColor),name="")+
+    xlab('Longitude')+ylab('Latitude')+ggtitle(figtitle[f]))
+}
 
 ```
 
@@ -384,14 +415,17 @@ GgColor = 'magenta'
 #| echo: false
 #| message: false
 #| warning: false
-#| fig-width: 6 
-#| fig-height: 6 
+#| fig-width: 9 
+#| fig-height: 8 
 
 #Create dataframe with positions of all events
-UODF_gps<-data.frame()
+SpDF_gps<-data.frame()
 
 for(d in 1:length(figtitle)){
     UODF<-(TimesAllUO) %>%
+    filter(Drift==figtitle[d])
+  
+   GgDF<-(TimesAllGg) %>%
     filter(Drift==figtitle[d])
   
   GPSDF<-(GPSAll) %>%
@@ -403,75 +437,62 @@ for(d in 1:length(figtitle)){
     UODF$Longitude[c]<-GPSDF$Longitude[Ind]
     UODF$Latitude[c]<-GPSDF$Latitude[Ind]
   }
-UODF_gps<-rbind(UODF,UODF_gps)
+  
+   for(c in 1:nrow(GgDF)){
+    Ind<-which.min(abs(as.numeric(difftime(GPSDF$UTC,GgDF$UTC[c],units="mins"))))
+    GgDF$Longitude[c]<-GPSDF$Longitude[Ind]
+    GgDF$Latitude[c]<-GPSDF$Latitude[Ind]
+  }
+  
+  DF<-rbind(UODF,GgDF)
+  
+SpDF_gps<-rbind(DF,SpDF_gps)
+DF<-data.frame()
+UODF<-data.frame()
+GgDF<-data.frame()
 }
-AllSpecies<-rbind(UODF_gps,GgDF)
 
 #define boundaries of the map
-lon1=-132;lon2=-114;lat1=30;lat2=40
+lon1=-126;lon2=-114;lat1=27;lat2=40
 
 #Extract bathymetry data from NOAA (saves local file to speed future performance)
 bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
 
+#Map with only drift tracks 
 autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   coord_cartesian(expand = 0)+
   geom_contour(aes(z=z),breaks=c(-1000),color="gray24")+
   scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
                        colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.1)+
-  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts')
+  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.05,color='gray92')+
+  xlab('Longitude')+ylab('Latitude')+
+  ggtitle('All Drifts')
+
 
 autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
   coord_cartesian(expand = 0)+
   geom_contour(aes(z=z),breaks=c(-1000),color="gray24")+
   scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
                        colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.1)+
+  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.01,color='gray92')+
   new_scale_color()+
-  geom_point(data=AllSpecies,aes(x=Longitude,y=Latitude,color=Species))+
-  scale_color_manual(values=c(UOColor,GgColor), labels=c("Unidentified Dolphins",'Risso\'s Dolphins'),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts')
+  geom_point(data=SpDF_gps,aes(x=Longitude,y=Latitude,color=Species,alpha=0.3),size=0.05,position="jitter")+
+  scale_color_manual(values=c("UO"=UOColor,"Gg"=GgColor),name="")+
+  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts: Unidentified Dolphins and Risso\'s Dolphins')
 
 ```
 
-Risso's
+# All-drift Timeseries
 
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
-#| fig-width: 6 
-#| fig-height: 6 
-
-#define boundaries of the map
-lon1=-132;lon2=-114;lat1=30;lat2=40
-
-#Extract bathymetry data from NOAA (saves local file to speed future performance)
-bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
-
-autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
-  coord_cartesian(expand = 0)+
-  geom_contour(aes(z=z),breaks=c(-1000),color="gray24")+
-  scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
-                       colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
-  geom_point(data=GPSAll,aes(Longitude,Latitude),size=0.1)+
-  new_scale_color()+
-  geom_point(data=GgDF,aes(x=Longitude,y=Latitude))+
-  scale_color_manual(values=c(GgColor), labels=c("Risso\'s Dolphins"),name="")+
-  xlab('Longitude')+ylab('Latitude')+ggtitle('All Drifts')
-
-```
-
-#### Drift Timeseries
-
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
-
+#| #| fig-width: 6  
+#| fig-height: 8 
 #create counts vectors to compare across time
 # get counts by hour of day- drift 10 is earliest and drift20 is latest
-daybins = seq(as.POSIXct(min(TimesAllUO$UTC)),as.POSIXct(max(TimesAllUO$UTC)),'days')
+daybins = seq(as.POSIXct(min(TimesAll$UTC)),as.POSIXct(max(TimesAll$UTC)),'days')
 
 #need pracma for histc
 if(!require('pracma')) install.packages('pracma')
@@ -479,31 +500,41 @@ library(pracma)
 library(dplyr)
 
 #run through for each drift and add on to dataframe
-whalecounts = data.frame(daybins)
+allcounts = data.frame(daybins)
+tempUO = allcounts
 
 for (iD in 1:length(figtitle)){
 
 driftTimes = filter(TimesAllUO,Drift==figtitle[iD])
-countdata = histc(as.numeric(driftTimes$UTC),as.numeric(daybins))
+countdataUO = histc(as.numeric(driftTimes[driftTimes$Species=="UO",]$UTC),as.numeric(daybins))
 
-countdf = data.frame(daybins)
+countdfUO = data.frame(daybins)
 if (iD > 1){
-  countdf$counts = countdata$cnt
-  countdf$id = rep(figtitle[iD],length(daybins))
+  #make separate df for whales, anthro and then add together
+  countdfUO$counts = countdataUO$cnt
+  countdfUO$drift = rep(figtitle[iD],length(daybins))
+  countdfUO$id = rep("UO",length(daybins))
 
-  whalecounts = rbind(whalecounts,countdf)
+  allcounts = rbind(allcounts,countdfUO)
 }else{
-  whalecounts$counts = countdata$cnt
-whalecounts$id = rep(figtitle[iD],length(daybins))
+  tempUO$counts = countdataUO$cnt; tempUO$id = rep("UO",length(daybins))
+
+  allcounts = tempUO
+allcounts$drift = rep(figtitle[iD],length(daybins))
 }
 }
 
 #change zeros to nans so they don't plot
-whalecounts$counts[whalecounts$counts==0]=NA
+allcounts$counts[allcounts$counts==0]=NA
 
 #plotting
-ggplot(data=whalecounts,aes(x=daybins,y=counts))+ 
-geom_point()+
-facet_wrap(~id,ncol=1)
+ggplot(data=allcounts,aes(x=daybins,y=counts,color=id))+ 
+geom_point(size=.5)+
+  scale_color_manual(values=c(UOColor,GgColor))+
+facet_wrap(~drift,ncol=1)+
+   theme(panel.background = element_rect(fill = "midnightblue"),
+          panel.grid.major = element_line(color = 'black', linetype = 'dotted'),panel.grid.minor = element_line(color = 'black',linetype = 'dotted', size = .5))
 
 ```
+
+# the end!
