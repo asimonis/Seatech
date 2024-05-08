@@ -1,0 +1,242 @@
+---
+title: "Rockfish_Results"
+format: pdf
+editor: visual
+---
+
+## Goals of this study
+
+Investigate patterns in the acoustic behavior of rockfish
+
+## Data
+
+Acoustic data was collected from stationary recorders along the central California coast. Site = MB05
+
+## Combine Logs
+
+The presence of rockfish chorusing was logged by 2 Seatech analysts: Rie and Gale.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# # # if (!require("pacman")) install.packages("pacman")
+if(!require('devtools')) install.packages('devtools')
+# # install from GitHub
+devtools::install_github('TaikiSan21/PAMmisc')
+# devtools::install_github('ericpante/marmap')
+suppressMessages(pacman::p_load(knitr,here,lubridate,dplyr,magrittr,xlsx,RSQLite,viridis,marmap,ggplot2,suncalc,ggnewscale,PAMmisc,stringr,lunar,NightDay))
+
+Logs<-list.files(here('data','2024_Rockfish'),pattern='detlog',full.names = TRUE) %>%
+  lapply(read.xlsx,sheetName='Detections') %>%
+  bind_rows() %>%
+  mutate(StartTime=as.POSIXct(Start.time,format='%Y-%m-%d %H:%M:%S',tz='UTC'),
+         EndTime=as.POSIXct(End.time,format='%Y-%m-%d %H:%M:%S',tz='UTC'))
+
+# Logs<-Logs %>%
+#   mutate(interval=floor_date(PT,unit="hour")+minutes(floor(minute(PT)/10)*10), Hour=hour(PT)) 
+
+#Create Times Dataframe
+EffortStart<-as.POSIXct('2023-03-01 0:00:00',format='%Y-%m-%d %H:%M:%S',tz='UTC')
+EffortEnd<-as.POSIXct('2023-03-31 23:59:59',format='%Y-%m-%d %H:%M:%S',tz='UTC')
+Times<- seq.POSIXt(EffortStart,EffortEnd,by='10 min')
+MB05<-data.frame(Times)
+MB05$Rockfish<-'Absent'
+
+for(n in 1:nrow(Logs)){
+  pres<-which(MB05$Times>=Logs$Start.time[n] & MB05$Times<Logs$End.time[n])
+  MB05$Rockfish[pres]<-'Present'
+}
+
+MB05$LunarDay<-lunar.phase(MB05$Times,name=8)
+
+#Add Day/Night values
+MB05$DayNight<-'night'
+SunTimes<-getSunlightTimes(unique(as.Date(MB05$Times)),lat=35.883333,
+                lon=-121.55,keep=c('sunrise','sunset'),tz='America/Los_Angeles')
+
+for(n in 1:length(SunTimes)){
+  day<-which(MB05$Times>=SunTimes$sunrise[n] & MB05$Times<MB05$sunset[n])
+  MB05$DayNight[day]<-'day'
+}
+MB05$Times_local<-with_tz(MB05$Times,tz='America/Los_Angeles')
+```
+
+## Mark times of no-effort due to masking
+
+At times, noise masked the presence of rockfish chorusing so we need to show that these times have 'no effort'.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+#Start and end of noise 
+NoiseStart<-with_tz(as.POSIXct('2023-03-21 06:23',tz='UTC'),tz='America/Los_Angeles')
+NoiseStop<-with_tz(as.POSIXct('2023-03-27 14:00',tz='UTC'),tz='America/Los_Angeles')
+```
+
+## Plots
+
+**Total call hours by date with Lunar Illumination**
+
+```{r}
+Logs<-Logs%>%
+  mutate(Duration = difftime(End.time,Start.time,units="hour"),
+         LunarDay =  round(lunar.phase(as.Date(StartTime))/0.212769,0))
+plotfile<-paste0(here('figures','Rockfish_Chorus_Duration_Lunar.pdf'))
+
+pdf(plotfile,width=6,height=6)           
+ggplot(Logs,aes(LunarDay,Duration))+
+  geom_point()+xlab('Lunar Day')+theme_bw()+geom_smooth()+
+  ggtitle('Lunar Cycle with Chorus Duration')
+dev.off()
+
+Summary<-MB05 %>% 
+  filter(Rockfish=="Present") %>%
+  mutate(Date = as.Date(Times_local)) %>%
+  mutate(LunarDay =  round(lunar.phase(as.Date(Times_local))/0.212769,0),
+         LunarIll = lunar.illumination(Date))%>%
+  group_by(Date) %>%
+  summarize(HourPres = n()/6,
+            LunarDay = median(LunarDay),
+            LunarIll = mean(LunarIll)) 
+
+plotfile<-paste0(here('figures','Rockfish_lunar.pdf'))
+
+pdf(plotfile,width=6,height=4.5)
+print(ggplot(Summary,aes(Date,HourPres,fill=LunarIll))+
+  annotate("rect", fill = "grey",  
+        xmin = as.Date(NoiseStart), xmax = as.Date(NoiseStop),
+        ymin = 0, ymax = Inf) +
+  geom_bar(stat='identity',color='black') +
+  scale_fill_gradient2(low='black',high='white',midpoint=.5)+
+  ylab('Total hours with calling')+labs(fill='Lunar Illumination'))
+dev.off()
+
+ggplot(Summary,aes(LunarDay,HourPres,fill=LunarIll))+
+  geom_bar(stat='identity',color='black') +
+  scale_fill_gradient2(low='black',high='white',midpoint=.5)
+```
+
+#### Diel plot showing rockfish presence
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+GPS<-data.frame(Latitude=rep(35.7668,2),Longitude=rep(-121.4332,2),UTC=c(as.POSIXct('2023-03-01 0:00',tz='UTC'),as.POSIXct('2023-03-31 23:59',tz='UTC')),DriftName=rep('MB05',2))
+
+MB05Pres<-MB05 %>%
+  filter(Rockfish=='Present') %>%
+  mutate(UTC=Times)
+
+plotPresGrid(MB05Pres,type="presence",bin="15min",gps=GPS,title=paste0('MB05: ',': Rockfish'),plotTz='America/Los_Angeles') 
+
+MB05Pres <-MB05Pres%>%
+    mutate(lunar_day = round(lunar.phase(as.Date(Times)) / 0.212769),0) 
+
+```
+
+### Time with soundscape metrics
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 8
+#| fig-height: 8
+
+library(lubridate)
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(scales)
+library(data.table)
+library(reshape)
+library(viridis)
+SSDir<-'D:/Seatech/Soundscape/metrics/'
+TOLfilelist<-list.files(path=SSDir,pattern='*TOL_2min',recursive=TRUE,full.names = TRUE)
+TOL<-lapply(TOLfilelist,read.csv,header=TRUE)
+TOL<-bind_rows(TOL)
+TOL$DateTime<-strptime(TOL$yyyy.mm.ddTHH.MM.SSZ,format="%Y-%m-%dT%H:%M:%OSZ",tz="UTC")
+TOL$DateTime<-with_tz(TOL$DateTime,tz='America/Los_Angeles')
+TOL$DateTime<-as.POSIXct(TOL$Date)
+TOL<-select(TOL, -yyyy.mm.ddTHH.MM.SSZ)
+TOL<-melt(TOL,id.vars=c('DateTime'))
+TOL$Month<-month(TOL$DateTime)
+TOL$Date<-as.Date(TOL$DateTime,format='%Y-%m-%d')
+
+# TOL<-read.csv(fileTOL,header = TRUE)
+# TOL$DateTime<-strptime(TOL$yyyy.mm.ddTHH.MM.SSZ,format="%Y-%m-%dT%H:%M:%OSZ",tz="UTC")
+# TOL$DateTime<-as.POSIXct(TOL$Date)
+# TOL<-select(TOL, -yyyy.mm.ddTHH.MM.SSZ)
+# TOL<-melt(TOL,id.vars=c('DateTime'))
+# TOL$Month<-month(TOL$DateTime)
+# TOL$Date<-as.Date(TOL$DateTime,format='%Y-%m-%d')
+
+TOL200<-filter(TOL,variable=="TOL_200")%>%
+  mutate(Hour=hour(DateTime))
+TOL250<-filter(TOL,variable=="TOL_250")%>%
+  mutate(Hour=hour(DateTime))
+
+#PLOTS
+ggplot(TOLsub,aes(DateTime,value,color=variable))+geom_line()+
+  scale_color_viridis(discrete=TRUE)+
+  geom_vline(xintercept=Logs$Start.time,col='green')+
+  geom_vline(xintercept=Logs$End.time,col='red')
+
+Heat200<-ggplot(TOL200,aes(Hour,Date,fill=value))+geom_tile()+
+  scale_fill_viridis(option="H")
+Heat250<-ggplot(TOL250,aes(Hour,Date,fill=value))+geom_tile()+
+  scale_fill_viridis(option="H")
+  
+
+grid.arrange(Heat200,Heat250,nrow=2)
+  scale_fill_viridis(name='dB re 1 uPa')+ggtitle("MB05: Third Octave Level @ 200 Hz (median)")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+MB05_gps<-data.frame(Latitude=rep(35.7668,2),Longitude=rep(-121.4332,2),UTC=c(as.POSIXct('2023-03-01 0:00',tz='UTC'),as.POSIXct('2023-03-31 23:59',tz='UTC')),DriftName=rep('MB05',2))
+
+figtitle<-''
+
+ # define boundaries of the map
+ lon1=-122;lon2=-120.4;lat1=35.1;lat2=36;
+  
+  #Extract bathymetry data from NOAA (saves local file to speed future performance)
+  bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
+  
+  #Create color palettes
+  blues<-c("royalblue4","royalblue3",
+           "royalblue2","royalblue1")
+  greys<-c(grey(0.8),grey(0.93),grey(0.99))
+  dasbr.ptColor = "black"  # color for DASBR track and deployment points
+  SPLabels<-'Humpback Song'
+  SpColor<-c('yellow')
+  
+    # png(plotfile,width=5,height=6,units="in",res=300)
+    plotfile<-paste0(here('figures','MB05_Map.pdf'))
+
+  pdf(plotfile,width=6,height=4.5)
+  #Whales
+ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
+    coord_cartesian(expand = 0)+
+    geom_contour(aes(z=z),breaks=c(-100,-500,-1000),color="gray24")+
+    scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
+                         colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
+    xlab('')+ylab('')+ggtitle(figtitle)+
+      new_scale_color()+
+   geom_point(data=MB05_gps,aes(Longitude,Latitude),size=4,color='orange')+
+   geom_text(data=MB05_gps,aes(Longitude,Latitude,label='MB05'),size=4,vjust=2)+
+   geom_point(aes(-120.85,35.3659,label='Morro Bay'),size=2)+
+   geom_text(aes(-120.85,35.3659,label='Morro Bay'),size=4,hjust=-.1)
+dev.off()
+
+
+ }
+```

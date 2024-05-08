@@ -1,0 +1,228 @@
+---
+title: "Humpback Data Analysis"
+author: "Anne Simonis"
+format: pdf
+editor: visual
+---
+
+## Goals of this study
+
+Investigate the co-occurrence of humpback whales and vessel noise.
+
+## Data
+
+Acoustic data was collected from stationary recorders along the central California coast (Site = MB05), as well as from drifting acoustic recorders during March, 2023 as part of the ADRIFT project.
+
+## Load MB05 Logs
+
+The presence of humpback whale song was logged by 1 Seatech analysts: Virginia Pearson.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# # # if (!require("pacman")) install.packages("pacman")
+# if(!require('devtools')) install.packages('devtools')
+# # install from GitHub
+# devtools::install_github('TaikiSan21/PAMmisc')
+install.packages("~/GitHub/PAMmisc_1.11.9.tar.gz", repos = NULL, type = "source")
+install.packages("C:/Users/anne.simonis/Documents/GitHub/PAMscapes_0.3.1.tar.gz", repos = NULL, type = "source")
+source('C:/Users/anne.simonis/Documents/GitHub/ADRIFT_Report/R/reportPlotFunctions.R')
+source("~/GitHub/Seatech/code/ADRIFT_functions.R")
+
+# devtools::install_github('ericpante/marmap')
+suppressMessages(pacman::p_load(knitr,here,lubridate,dplyr,magrittr,xlsx,RSQLite,viridis,marmap,ggplot2,suncalc,ggnewscale,PAMmisc,stringr,gridExtra,pracma))
+
+logfile<-here('data','2024_Humpback','VCP_detlog_MB05.xlsx')
+
+#Virginia's logs
+LogVP<-loadDetectionData(logfile,source='triton',driftName='MB05',sheet='Detections')
+LogVP<-LogVP %>%
+  filter(call%in%c('Song','Non-Song'), species=='Mn') 
+  #filter(call=='Song' & species=='Mn') 
+
+MB05_gps<-data.frame(Latitude=rep(35.7668,2),Longitude=rep(-121.4332,2),UTC=c(as.POSIXct('2023-03-01 0:00',tz='UTC'),as.POSIXct('2023-03-31 23:59',tz='UTC')),DriftName=rep('MB05',2))
+
+MB05_effort<-data.frame(start = as.POSIXct('2023-03-01 0:00',tz='UTC'),end=as.POSIXct('2023-03-31 23:59',tz='UTC'),DriftName='MB05',DeploymentSite='MB')
+MB05_HourlyEffort<-effortToBins(MB05_effort,bin='hour')
+
+MB05_MnBin<-formatBinnedPresence(LogVP,bin="hour",gps=MB05_gps,effort = MB05_HourlyEffort)
+MB05_MnBin = subset(MB05_MnBin, !is.na(species))
+
+DailySumVP<-MB05_MnBin %>% 
+  mutate(Date=as.Date(UTC)) %>%
+  group_by(Date,call) %>% 
+  reframe(PctDay=length(unique(UTC))/24)
+
+#MB05 Effort Hours
+effortVCP<-read.xlsx(logfile,sheetName='MetaData')
+effortVCP<-subset(effortVCP,!-is.na(Effort.Start))
+
+OnEffort<-NA
+for(t in 1:nrow(effortVCP)){
+  Times<-seq(effortVCP$Effort.Start[t],effortVCP$Effort.End[t],by="hour")
+    OnEffort<-c(Times,OnEffort)
+}
+MB05_effort<-data.frame(UTC = OnEffort,Date=date(OnEffort),Hour=hour(OnEffort))
+MB05_effortSum<-MB05_effort %>% group_by(Date) %>% reframe(EffortHours=length(Hour))
+```
+
+## Load ADRIFT data
+
+```{r}
+
+
+effortStartDate<-as.Date('2023-03-01') 
+effortEndDate<-as.Date('2023-04-1')
+
+# load the humpback data that Taiki's code injested
+hmpData_all <- readRDS(here('data','2024_Humpback','humpbackDataFinal.rds'))
+
+# Create names for the morro bay adrift numbers then pull them out
+# this should be combined in the filter or subset functions above
+completedDrifts <- paste0('ADRIFT_', sprintf("%03d", 46:53))
+MorroBayHMP<-subset(hmpData_all, DriftName %in% completedDrifts &
+                     species == 'humpback') 
+Ind<-which(MorroBayHMP$call %in% c('Regular','regular'))
+MorroBayHMP$call[Ind]<-'social'
+
+# GPS data
+gps<- readRDS(here('data','2024_Humpback','AllDeploymentGPS.rds'))
+MorroBayGps = subset(gps, DriftName %in% completedDrifts)
+
+effort_adrift = readRDS(here('data','2024_Humpback','AllDrifts_BaseEffort.rds'))
+effort_adrift<-filter(effort_adrift,DriftName %in% completedDrifts)
+effortHourly_adrift<-effortToBins(effort_adrift ,bin='hour')
+
+# Create the binning in Taiki's formatting
+MorroBayHMPBinnedSng = formatBinnedPresence(mutate(MorroBayHMP, call='song'),
+                     effort=effortHourly_adrift, 
+                     bin='hour', 
+                     gps=MorroBayGps)
+
+MorroBayHMPBinnedAll = formatBinnedPresence(mutate(MorroBayHMP),
+                     effort=effortHourly_adrift, 
+                     bin='hour', 
+                     gps=MorroBayGps)
+
+MorroBayHMPBinnedSng = subset(MorroBayHMPBinnedSng, !is.na(species))
+MorroBayHMPBinnedAll = subset(MorroBayHMPBinnedAll, !is.na(species))
+
+DailySumCCC<-MorroBayHMPBinnedSng %>% mutate(Date=as.Date(UTC)) %>% group_by(Date) %>% reframe(PctDay=length(unique(UTC))/24)
+
+DailySumCCCAll<-MorroBayHMPBinnedAll %>% mutate(Date=as.Date(UTC)) %>% group_by(Date,call) %>% reframe(PctDay=length(unique(UTC))/24)
+
+CCC_effort<-effortHourly_adrift %>%
+  filter(UTC>effortStartDate  & UTC<effortEndDate)%>%
+  reframe(Date=date(UTC),Hour=hour(UTC))
+
+CCC_effortSum<-CCC_effort %>% group_by(Date) %>% reframe(EffortHours=length(unique(Hour)))
+```
+
+## Plots
+
+### Bar Plot
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+#Change y-axis label to "Fraction of day"
+plotfile<-paste0(here('figures','Humpback_Song_Timeseries.pdf'))
+ pdf(plotfile,width=6,height=4.5)
+  
+MB05<-ggplot(DailySumVP,aes(Date,PctDay))+
+  geom_bar(stat="identity",fill='deeppink1')+theme_bw()+
+    scale_x_date(limits=c(effortStartDate,effortEndDate))+
+  ylab('Percent of Day with Detections')+ggtitle('MB05')+
+  geom_line(data=MB05_effortSum,aes(Date,EffortHours/24),size=1)+
+  theme(axis.text.y=element_text(vjust=1))
+
+
+CCC<-ggplot(DailySumCCC,aes(Date,PctDay))+
+  geom_bar(stat="identity",fill='deeppink1')+theme_bw()+
+    scale_x_date(limits=c(effortStartDate,effortEndDate))+
+  ylab('')+ggtitle('Drifters')+
+  geom_line(data=CCC_effortSum,aes(Date,EffortHours/24),size=1)
+
+grid.arrange(MB05,CCC,nrow=2)
+dev.off()
+
+
+plotfile<-paste0(here('figures','Humpback_AllCallTypes_Timeseries.pdf'))
+ pdf(plotfile,width=6,height=4.5)
+  
+MB05all<-ggplot(DailySumVP,aes(Date,PctDay))+
+  geom_bar(stat="identity",position=position_dodge2(preserve='single'),aes(fill=call))+theme_bw()+
+  scale_fill_manual(values=c('navy','deeppink1'),labels=c('Social','Song',''))+
+  scale_x_date(limits=c(effortStartDate,effortEndDate))+
+  ylab('Percent of Day with Detections')+ggtitle('MB05')+
+  geom_line(data=MB05_effortSum,aes(Date,EffortHours/24),size=1)+
+  theme(axis.text.y=element_text(vjust=1))
+  
+CCCall<-ggplot(DailySumCCCAll,aes(Date,PctDay))+
+  geom_bar(stat="identity",position=position_dodge2(preserve='single'),aes(fill=call))+theme_bw()+
+  scale_fill_manual(values=c('navy','deeppink1'),labels=c('Social','Song'))+
+    scale_x_date(limits=c(effortStartDate,effortEndDate))+
+  ylab('')+ggtitle('Drifters')+
+  geom_line(data=CCC_effortSum,aes(Date,EffortHours/24),size=1)
+
+grid.arrange(MB05all,CCCall,nrow=2)
+dev.off()
+```
+
+### **Map**
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 4 
+#| fig-height: 4 
+
+
+#Consider labeling contour lines 
+
+figtitle<-'Acoustic Detections of Humpback Song'
+
+ # define boundaries of the map
+ lon1=-122.5;lon2=-120.4;lat1=34.8;lat2=36;
+  
+  #Extract bathymetry data from NOAA (saves local file to speed future performance)
+  bat<-getNOAA.bathy(lon1,lon2,lat1,lat2,resolution=1,keep=TRUE)
+  
+  #Create color palettes
+  blues<-c("royalblue4","royalblue3",
+           "royalblue2","royalblue1")
+  greys<-c(grey(0.8),grey(0.93),grey(0.99))
+  dasbr.ptColor = "black"  # color for DASBR track and deployment points
+  SPLabels<-'Humpback Song'
+  SpColor<-c('yellow')
+  
+    # png(plotfile,width=5,height=6,units="in",res=300)
+    plotfile<-paste0(here('figures','Humpback_Song_Map.pdf'))
+
+  pdf(plotfile,width=6,height=4.5)
+  #Whales
+ autoplot.bathy(bat,geom=c('r'),coast=TRUE)+
+    coord_cartesian(expand = 0)+
+    geom_contour(aes(z=z),breaks=c(-100,-500,-1000),color="gray24")+
+    scale_fill_gradientn(values = scales::rescale(c(min(bat), -120, 0, max(bat))),
+                         colors = c("midnightblue", "royalblue3", "grey50", "grey80"),name="Depth (m)")+
+    geom_point(data=MorroBayGps,aes(Longitude,Latitude),size=0.05,color='gray45')+
+    new_scale_color()+
+    geom_point(data=MorroBayHMPBinnedSng,aes(x=Longitude,y=Latitude),size=.5,col='deeppink1')+
+    xlab('')+ylab('')+ggtitle(figtitle)+
+      new_scale_color()+
+   geom_point(data=MB05_gps,aes(Longitude,Latitude),size=4,color='orange')+
+   geom_text(data=MB05_gps,aes(Longitude,Latitude,label='MB05'),size=4,vjust=2)+
+   geom_point(aes(-120.85,35.3659,label='Morro Bay'),size=2)+
+   geom_text(aes(-120.85,35.3659,label='Morro Bay'),size=4,hjust=-.1)
+dev.off()
+ }
+
+```
+
+# the end!
