@@ -26,7 +26,7 @@ if(!require('devtools')) install.packages('devtools')
 # # install from GitHub
 devtools::install_github('TaikiSan21/PAMmisc')
 # devtools::install_github('ericpante/marmap')
-suppressMessages(pacman::p_load(knitr,here,lubridate,dplyr,magrittr,xlsx,RSQLite,viridis,marmap,ggplot2,suncalc,ggnewscale,PAMmisc,stringr,lunar,NightDay))
+suppressMessages(pacman::p_load(knitr,here,lubridate,dplyr,magrittr,xlsx,RSQLite,viridis,marmap,ggplot2,suncalc,ggnewscale,PAMmisc,stringr,lunar,NightDay,photobiology,gridExtra))
 
 Logs<-list.files(here('data','2024_Rockfish'),pattern='detlog',full.names = TRUE) %>%
   lapply(read.xlsx,sheetName='Detections') %>%
@@ -84,7 +84,14 @@ NoiseStop<-with_tz(as.POSIXct('2023-03-27 14:00',tz='UTC'),tz='America/Los_Angel
 ```{r}
 Logs<-Logs%>%
   mutate(Duration = difftime(End.time,Start.time,units="hour"),
-         LunarDay =  round(lunar.phase(as.Date(StartTime))/0.212769,0))
+         LunarDay =  round(lunar.phase(as.Date(StartTime))/0.212769,0),
+         LunarPhase = lunar.phase(as.Date(StartTime),name=8))
+
+Logs$date<-Logs$Start.time
+
+# Logs$LunarAltitude<-getMoonPosition(Logs,lat=35.883333,lon=-121.55,
+#                                     keep=c('altitude'))
+  
 plotfile<-paste0(here('figures','Rockfish_Chorus_Duration_Lunar.pdf'))
 
 pdf(plotfile,width=6,height=6)           
@@ -156,7 +163,7 @@ library(scales)
 library(data.table)
 library(reshape)
 library(viridis)
-SSDir<-'D:/Seatech/Soundscape/metrics/'
+SSDir<-'E:/Seatech/Soundscape/metrics/'
 TOLfilelist<-list.files(path=SSDir,pattern='*TOL_2min',recursive=TRUE,full.names = TRUE)
 TOL<-lapply(TOLfilelist,read.csv,header=TRUE)
 TOL<-bind_rows(TOL)
@@ -239,4 +246,59 @@ dev.off()
 
 
  }
+```
+
+```{r}
+
+HourlyTimes<-seq.POSIXt(from=min(Logs$Start.time),to=max(Logs$Start.time),by="hour")
+
+Altitude<-getMoonPosition(date = HourlyTimes,keep = c("altitude"),
+lat = 35.883333, lon = -121.55)
+
+Altitude$Date<-as.Date(Altitude$date)
+Altitude$UTC<-Altitude$date
+
+Logs$UTC<-Logs$Start.time
+
+TOL$Period<-is_daytime(TOL$DateTime,geocode=tibble::tibble(lon=-121.4332,lat=35.7668))
+TOL$Period<-factor(TOL$Period,levels=c('FALSE','TRUE'),labels=c('Night','Day'))
+TOL$UTC<-with_tz(TOL$DateTime,tz='UTC')
+  
+TOL250<-filter(TOL,variable=="TOL_250")%>%
+  mutate(Hour=hour(DateTime))
+
+
+# TOL$DateTime<-with_tz(TOL$DateTime,tz='America/Los_Angeles')
+
+
+for(m in 1:length(unique(Altitude$Date))){
+TOLDay<-filter(TOL250,Date==unique(Altitude$Date)[m])
+TOL_1Day<-ggplot(TOLDay,aes(UTC,value,color=Period))+geom_point()+theme(legend.position="top")+scale_y_continuous(limits=c(70,100))+geom_smooth()
+MoonDay<-filter(Altitude,Date==unique(Altitude$Date)[m])
+Moon_1Day<-ggplot(MoonDay,aes(UTC,altitude))+geom_point()+scale_y_continuous(limits=c(0,1.2))
+print(grid.arrange(TOL_1Day,Moon_1Day,nrow=2))
+readline(prompt="Press [enter] to continue")
+}
+
+
+#FullMoon
+TOLDay<-filter(TOL250,Date=='2023-03-07')
+TOL_FullMoon<-ggplot(TOLDay,aes(UTC,value,color=Period))+geom_point()+theme(legend.position="top")+scale_y_continuous(limits=c(70,100))+geom_smooth()+ggtitle('Full Moon')
+MoonDay<-filter(Altitude,Date=='2023-03-07')
+Moon_Full<-ggplot(MoonDay,aes(UTC,altitude))+geom_point()+scale_y_continuous(limits=c(0,1.2))
+# print(grid.arrange(TOL_FullMoon,Moon_Full,nrow=2))
+
+
+#NewMoon
+TOLDay<-filter(TOL250,Date=='2023-03-21')
+TOL_NewMoon<-ggplot(TOLDay,aes(UTC,value,color=Period))+geom_point()+theme(legend.position="none")+scale_y_continuous(limits=c(70,100))+geom_smooth()+ggtitle('New Moon')
+MoonDay<-filter(Altitude,Date=='2023-03-21')
+Moon_New<-ggplot(MoonDay,aes(UTC,altitude))+geom_point()+scale_y_continuous(limits=c(0,1.2))
+print(grid.arrange(TOL_FullMoon,Moon_Full,TOL_NewMoon,Moon_New,nrow=4))
+
+
+
+TOLmonth<-ggplot(TOL250,aes(UTC,value,color=Period))+geom_point()+theme(legend.position = "top")+scale_x_datetime(limits=c( as.POSIXct('2023-03-06 0:00:00',tz='UTC'), as.POSIXct('2023-03-30 0:00:00',tz='UTC')))
+MoonMonth<-ggplot(Altitude,aes(UTC,altitude))+geom_point()+scale_x_datetime(limits=c( as.POSIXct('2023-03-06 0:00:00',tz='UTC'), as.POSIXct('2023-03-30 0:00:00',tz='UTC')))
+grid.arrange(TOLmonth,MoonMonth,nrow=2)
 ```
